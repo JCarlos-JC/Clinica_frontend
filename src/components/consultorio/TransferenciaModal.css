@@ -1,0 +1,49 @@
+/* filepath: e:\Mockup clinica\sistema-clinica\src\components\consultorio\TransferenciaModal.css */
+.transferencia-modal .ant-modal-header {
+  background-color: #e6f7ff;
+  border-bottom: 1px solid #91d5ff;
+}
+
+.transferencia-modal .ant-modal-title {
+  color: #1890ff;
+}
+
+.transferencia-modal .ant-modal-content {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.transferencia-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.transferencia-modal .ant-form-item-label > label {
+  font-weight: 500;
+}
+
+.transferencia-modal .ant-input,
+.transferencia-modal .ant-select-selector {
+  border-radius: 4px;
+}
+
+.transferencia-modal .ant-input:hover,
+.transferencia-modal .ant-select-selector:hover {
+  border-color: #1890ff;
+}
+
+.transferencia-modal .ant-input:focus,
+.transferencia-modal .ant-select-focused .ant-select-selector {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.transferencia-modal .ant-btn-primary {
+  background-color: #1890ff;
+  border-color: #1890ff;
+}
+
+.transferencia-modal .ant-btn-primary:hover,
+.transferencia-modal .ant-btn-primary:focus {
+  background-color: #40a9ff;
+  border-color: #40a9ff;
+}

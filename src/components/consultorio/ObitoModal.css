@@ -1,0 +1,49 @@
+/* filepath: e:\Mockup clinica\sistema-clinica\src\components\consultorio\ObitoModal.css */
+.obito-modal .ant-modal-header {
+  background-color: #fff1f0;
+  border-bottom: 1px solid #ffccc7;
+}
+
+.obito-modal .ant-modal-title {
+  color: #ff4d4f;
+}
+
+.obito-modal .ant-modal-content {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.obito-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.obito-modal .ant-form-item-label > label {
+  font-weight: 500;
+}
+
+.obito-modal .ant-input,
+.obito-modal .ant-picker {
+  border-radius: 4px;
+}
+
+.obito-modal .ant-input:hover,
+.obito-modal .ant-picker:hover {
+  border-color: #ff4d4f;
+}
+
+.obito-modal .ant-input:focus,
+.obito-modal .ant-picker-focused {
+  border-color: #ff4d4f;
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2);
+}
+
+.obito-modal .ant-btn-primary.ant-btn-dangerous {
+  background-color: #ff4d4f;
+  border-color: #ff4d4f;
+}
+
+.obito-modal .ant-btn-primary.ant-btn-dangerous:hover,
+.obito-modal .ant-btn-primary.ant-btn-dangerous:focus {
+  background-color: #ff7875;
+  border-color: #ff7875;
+}
