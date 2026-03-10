@@ -54,14 +54,14 @@ localStorage.clear = function() {
 
 console.log('✅ LocalStorage monitor ativado!');
 
-export default {
-    enable: () => {
-        console.log('✅ LocalStorage monitor já está ativado!');
-    },
-    disable: () => {
-        localStorage.setItem = originalSetItem;
-        localStorage.removeItem = originalRemoveItem;
-        localStorage.clear = originalClear;
-        console.log('❌ LocalStorage monitor desativado!');
-    }
-};
+// export default {
+//     enable: () => {
+//         console.log('✅ LocalStorage monitor já está ativado!');
+//     },
+//     disable: () => {
+//         localStorage.setItem = originalSetItem;
+//         localStorage.removeItem = originalRemoveItem;
+//         localStorage.clear = originalClear;
+//         console.log('❌ LocalStorage monitor desativado!');
+//     }
+// };

@@ -48,49 +48,6 @@ const useUtentesAutonomos = () => {
   }, []);
 
   /**
-   * Cria um novo utente autônomo
-   */
-  const criarUtenteAutonomo = useCallback(async (dadosUtente) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      console.log('📤 Criando utente autônomo:', dadosUtente);
-      
-      const response = await utenteAutonomoService.createUtenteAutonomo(dadosUtente);
-      
-      if (response.success) {
-        console.log('✅ Utente autônomo criado:', response.data);
-        
-        // Atualizar a lista local
-        setUtentesAutonomos(prev => [response.data, ...prev]);
-        
-        message.success(response.message || 'Utente autônomo criado com sucesso!');
-        return response.data;
-      } else {
-        if (response.errors) {
-          // Erros de validação
-          Object.keys(response.errors).forEach(field => {
-            const fieldErrors = Array.isArray(response.errors[field]) ? response.errors[field] : [response.errors[field]];
-            fieldErrors.forEach(msg => {
-              message.error(`${field}: ${msg}`);
-            });
-          });
-        } else {
-          message.error(response.message || 'Erro ao criar utente autônomo');
-        }
-        throw new Error(response.message || 'Erro ao criar utente autônomo');
-      }
-    } catch (error) {
-      console.error('❌ Erro ao criar utente autônomo:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /**
    * Atualiza um utente autônomo existente
    */
   const atualizarUtenteAutonomo = useCallback(async (id, dadosUtente) => {
@@ -236,20 +193,49 @@ const useUtentesAutonomos = () => {
     carregarUtentesAutonomos();
   }, [carregarUtentesAutonomos]);
 
-  return {
-    // Estados
-    utentesAutonomos,
-    loading,
-    error,
-    
-    // Funções
-    carregarUtentesAutonomos,
-    criarUtenteAutonomo,
-    atualizarUtenteAutonomo,
-    excluirUtenteAutonomo,
-    alterarStatusUtente,
-    obterProximoNID
+    // Função para criar utente autônomo
+    const criarUtenteAutonomo = useCallback(async (dadosUtente) => {
+      setLoading(true);
+      setError(null);
+  
+      try {
+        const response = await utenteAutonomoService.createUtenteAutonomo(dadosUtente);
+        if (response.success) {
+          setUtentesAutonomos(prev => [response.data, ...prev]);
+          message.success(response.message || 'Utente autônomo criado com sucesso!');
+          return response.data;
+        } else {
+          if (response.errors) {
+            Object.keys(response.errors).forEach(field => {
+              const fieldErrors = Array.isArray(response.errors[field]) ? response.errors[field] : [response.errors[field]];
+              fieldErrors.forEach(msg => {
+                message.error(`${field}: ${msg}`);
+              });
+            });
+          } else {
+            message.error(response.message || 'Erro ao criar utente autônomo');
+          }
+          throw new Error(response.message || 'Erro ao criar utente autônomo');
+        }
+      } catch (error) {
+        message.error('Erro ao criar utente autônomo');
+        setError(error.message);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+  
+    return {
+      utentesAutonomos,
+      loading,
+      error,
+      carregarUtentesAutonomos,
+      criarUtenteAutonomo,
+      atualizarUtenteAutonomo,
+      excluirUtenteAutonomo,
+      alterarStatusUtente,
+      obterProximoNID,
+    };
   };
-};
-
-export default useUtentesAutonomos;
+  export default useUtentesAutonomos;

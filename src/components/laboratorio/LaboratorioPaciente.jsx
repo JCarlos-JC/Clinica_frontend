@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
-import { ClinicContext } from '../../context/ClinicContext';
-import { Table, Button, Modal, Form, Input, message, Tabs, Card, Tag, Space, Row, Col, Select, Upload, Divider } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Table, Button, Modal, Form, Input, message, Tabs, Card, Tag, Space, Row, Col, Select, Upload, Divider, Badge, Tooltip } from 'antd';
+import useLaboratorio from '../../hooks/useLaboratorio';
 import {
   CheckCircleOutlined,
   UserOutlined,
@@ -17,45 +17,21 @@ import dayjs from 'dayjs';
 
 const { TabPane } = Tabs;
 
-const LaboratorioPaciente = () => {  // Atualizar de triagens para exames pendentes
-  // Função para normalizar exames (garantir que sejam sempre strings ou objetos processados)
-  const normalizarExames = (exames) => {
-    if (!exames) return [];
-    
-    if (!Array.isArray(exames)) {
-      // Se for uma string simples
-      if (typeof exames === 'string') return [exames];
-      // Se for um objeto
-      if (typeof exames === 'object' && exames !== null) {
-        if (exames.nome) return [String(exames.nome)];
-        return [JSON.stringify(exames)];
-      }
-      return [String(exames)];
-    }
-    
-    // Se for array, garantir que cada item seja string
-    return exames.map(exame => {
-      if (typeof exame === 'string') return exame;
-      if (typeof exame === 'object' && exame !== null) {
-        if (exame.nome) return String(exame.nome);
-        return JSON.stringify(exame);
-      }
-      return String(exame);
-    });
-  };
-
+const LaboratorioPaciente = () => {
   const {
-    pacientes,
-    triagensRealizadas,
-    setTriagensRealizadas,
-    examesPendentes,
-    setExamesPendentes,
-    examesConcluidos,
-    setExamesConcluidos,
-    consultasPendentes,
-    setConsultasPendentes,
-    atualizarUtenteAutonomo
-  } = useContext(ClinicContext);
+    agendamentos,
+    agendamentosHistorico,
+    loading,
+    loadingAcao,
+    fetchAgendamentosPendentes,
+    fetchHistorico,
+    iniciarColheita,
+    concluirColheita,
+    adicionarAnexo
+  } = useLaboratorio();
+
+  // ID do agendamento que está a ser processado no modal
+  const agendamentoEmProcessoId = useRef(null);
 
   const [isExameModalVisible, setIsExameModalVisible] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
@@ -63,6 +39,16 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
   const [formExames] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
   const [arquivosExames, setArquivosExames] = useState({});
+
+  // Carrega agendamentos ao montar o componente
+  useEffect(() => {
+    fetchAgendamentosPendentes();
+  }, [fetchAgendamentosPendentes]);
+
+  // Carrega histórico ao entrar na aba 2
+  useEffect(() => {
+    if (activeTab === '2') fetchHistorico();
+  }, [activeTab, fetchHistorico]);
   
   // Configurações para diferentes tipos de exames
   const tiposExames = {
@@ -108,213 +94,106 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
     }
   };
 
-  // Filtrar apenas pacientes com exames aprovados e pagos (liberados para laboratório)
-  const pacientesExamesPendentes = (examesPendentes || []).filter(exame =>
-    exame.status === 'pago_laboratorio'
-  );
-  const examesConcluidosLista = examesConcluidos || []; const realizarExames = (paciente) => {
-    // Priorizar exames selecionados (que foram marcados como realizáveis)
-    let examesParaRealizar;
+  // Mapeamento de tipos de exame para campos de resultado
+  // ─────────────────────────────────────────────────────
 
-    if (Array.isArray(paciente.examesSelecionados) && paciente.examesSelecionados.length > 0) {
-      // Use os exames que foram selecionados como realizáveis
-      examesParaRealizar = paciente.examesSelecionados;
-    } else if (Array.isArray(paciente.examesSolicitados)) {
-      // Fallback para casos onde ainda não passaram pela seleção
-      examesParaRealizar = paciente.examesSolicitados;
-    } else if (paciente.examesSolicitados) {
-      examesParaRealizar = [paciente.examesSolicitados];
-    } else {
-      examesParaRealizar = [];
-    }
-    
-    const pacienteNormalizado = {
-      ...paciente,
-      examesSolicitados: normalizarExames(examesParaRealizar), // Usar apenas os exames selecionados
-      examesOriginais: normalizarExames(paciente.examesSolicitados), // Manter referência aos originais
-      examesSelecionados: normalizarExames(paciente.examesSelecionados || examesParaRealizar)
+  /**
+   * Abre o modal de colheita.
+   * Se o agendamento ainda está em estado 'agendada', chama iniciarColheita antes.
+   */
+  const realizarExames = async (agendamento) => {
+    agendamentoEmProcessoId.current = agendamento.id;
+
+    const pacienteParaModal = {
+      ...agendamento,
+      // exames como array de objetos { id, tipo_exame, prioridade } para o modal
+      exames: agendamento.exames || [],
+      solicitadoPor: agendamento.medico_solicitante || agendamento.solicitadoPor,
+      observacoes:   agendamento.observacoes
     };
 
-    setPacienteSelecionado(pacienteNormalizado);
+    setPacienteSelecionado(pacienteParaModal);
     setResultadosExames({});
     formExames.resetFields();
     setIsExameModalVisible(true);
+
+    // Marca colheita como em_colheita no backend (só se ainda estiver 'agendada')
+    if (agendamento.status === 'agendada') {
+      try {
+        await iniciarColheita(agendamento.id, {});
+      } catch (_) {
+        // erro já tratado no hook — não bloqueia a abertura do modal
+      }
+    }
   };
-  const handleFinishExames = () => {
+  const handleFinishExames = async () => {
     if (Object.keys(resultadosExames).length === 0) {
       message.error('Por favor, adicione pelo menos um resultado de exame.');
       return;
     }
 
-    // Determinar o ID do paciente para uso na criação do exame concluído
-    let pacienteId = pacienteSelecionado.pacienteId || pacienteSelecionado.id;
-    
-    // CORREÇÃO: Log para diagnóstico de ID antes de completar o exame
+    const agendamentoId = agendamentoEmProcessoId.current;
+    if (!agendamentoId) {
+      message.error('Agendamento não identificado. Tente novamente.');
+      return;
+    }
 
-    const exameCompletado = {
-      ...pacienteSelecionado,
-      resultadosExames: { ...resultadosExames },
-      dataExames: new Date().toLocaleString(),
-      dataAtualizacao: new Date().toLocaleString(),
-      status: 'exames_concluidos',
-      tipoTriagem: 'exames', // Garantir que o exame é reconhecido como um exame
-      retornoConsulta: pacienteSelecionado.tipoUtente !== 'autonomo', // Apenas pacientes regulares retornam ao consultório
-      // Manter tanto os exames selecionados quanto os originais para referência
-      // Garantir que todos os campos de exames sejam strings e não objetos
-      examesSelecionados: normalizarExames(pacienteSelecionado.examesSelecionados) || [],
-      examesOriginais: normalizarExames(pacienteSelecionado.examesOriginais || pacienteSelecionado.examesSolicitados) || [],
-      examesSolicitados: normalizarExames(pacienteSelecionado.examesSelecionados || pacienteSelecionado.examesSolicitados) || [],
-      examesNaoRealizaveis: pacienteSelecionado.examesNaoRealizaveis || [],
-      // IMPORTANTE: Garantir que o NID seja preservado para identificação consistente
-      nid: pacienteSelecionado.nid,
-      id: pacienteSelecionado.id || Date.now(), // Manter ID original ou criar novo
-      solicitadoPor: pacienteSelecionado.solicitadoPor ||
-        (pacienteSelecionado.tipoUtente === 'autonomo' ? 'Utente Autônomo' : 'Triagem')
-    };
-
-    // Adicionar o exame concluído à lista
-    setExamesConcluidos([...examesConcluidos, exameCompletado]);
-
-    // Se o exame veio de uma triagem, atualizar também a lista de triagens
-    if (pacienteSelecionado.tipoTriagem && pacienteSelecionado.tipoUtente !== 'autonomo') {
-      const novaListaTriagens = triagensRealizadas.map(t =>
-        t.id === pacienteSelecionado.id ? exameCompletado : t
+    // Constrói o array de resultados para o backend
+    const resultadosArray = Object.entries(resultadosExames).map(([tipoExame, resultado]) => {
+      // Encontrar o exame_id correspondente ao tipo_exame no agendamento
+      const exameObj = (pacienteSelecionado?.exames || []).find(
+        e => (e.tipo_exame || e.nome) === tipoExame
       );
-      setTriagensRealizadas(novaListaTriagens);
-    }
-    // Se não veio de uma triagem e não é autônomo, adicionar às triagens realizadas
-    else if (pacienteSelecionado.tipoUtente !== 'autonomo') {
-      setTriagensRealizadas([...triagensRealizadas, exameCompletado]);
-    }
-
-    // CORREÇÃO: Para pacientes não autônomos, atualizar também a lista de pacientes 
-    // e a lista de consultas pendentes para garantir que sejam detectados como em consulta
-    if (pacienteSelecionado.tipoUtente !== 'autonomo') {
-      // Atualizar o status do paciente para exames concluídos
-      const pacienteId = pacienteSelecionado.pacienteId || pacienteSelecionado.id;
-      
-      // Verificar se o paciente está na lista de consultas pendentes
-      const pacienteEmConsultasPendentes = pacienteSelecionado.emConsultasPendentes || 
-        consultasPendentes.some(c => c.id === pacienteId || c.pacienteId === pacienteId);
-
-      // Se não estiver nas consultas pendentes, adicionar para garantir que apareça como "em consulta"
-      if (!pacienteEmConsultasPendentes) {
-        
-        // Criar consulta pendente com os dados do exame concluído
-        const novaPendencia = {
-          ...exameCompletado,
-          statusExames: 'concluido',
-          examesEmAndamento: false,
-          aguardandoExames: false,
-          retornoComExames: true
-        };
-        
-        setConsultasPendentes(prev => [...prev, novaPendencia]);
-      } else {
-        // Atualizar a consulta pendente existente
-        const novasConsultasPendentes = consultasPendentes.map(c => {
-          if (c.id === pacienteId || c.pacienteId === pacienteId) {
-            return {
-              ...c,
-              statusExames: 'concluido',
-              examesEmAndamento: false,
-              aguardandoExames: false,
-              retornoComExames: true,
-              resultadosExames: exameCompletado.resultadosExames,
-              dataExames: exameCompletado.dataExames
-            };
-          }
-          return c;
-        });
-        
-        setConsultasPendentes(novasConsultasPendentes);
-      }
-    }
-
-    // Remover dos pendentes
-    setExamesPendentes(examesPendentes.filter(p => p.id !== pacienteSelecionado.id));
-
-    // Se for um utente autônomo, atualizar o status na lista de utentes autônomos
-    if (pacienteSelecionado.tipoUtente === 'autonomo') {
-      // Salvar histórico antes de resetar
-      const novoHistorico = {
-        dataExames: new Date().toLocaleString(),
-        resultadosExames: { ...resultadosExames },
-        examesRealizados: pacienteSelecionado.examesSelecionados || pacienteSelecionado.examesSolicitados || [],
-        observacoes: pacienteSelecionado.observacoes || ''
+      return {
+        exame_id:   exameObj?.id ?? null,
+        tipo_exame: tipoExame,
+        resultado:  resultado.valores ?? resultado,
+        laudo:      '',
+        arquivos:   (resultado.arquivos || []).map(f => f.name || f.uid)
       };
-
-      // Manter histórico anterior e adicionar novo
-      const historicoAnterior = pacienteSelecionado.historicoExames || [];
-      const novoHistoricoCompleto = [...historicoAnterior, novoHistorico];
-
-      const utenteResetado = {
-        // USAR O ID ORIGINAL DO UTENTE AUTÔNOMO, NÃO O ID DO LABORATÓRIO
-        id: pacienteSelecionado.pacienteId || pacienteSelecionado.id,
-        // Preservar dados do utente
-        nome: pacienteSelecionado.nome,
-        apelido: pacienteSelecionado.apelido,
-        nid: pacienteSelecionado.nid, // PRESERVAR NID GERADO
-        hospitalProveniencia: pacienteSelecionado.hospitalProveniencia,
-        dataNascimento: pacienteSelecionado.dataNascimento,
-        genero: pacienteSelecionado.genero,
-        tipoDocumento: pacienteSelecionado.tipoDocumento,
-        bilheteIdentidade: pacienteSelecionado.bilheteIdentidade,
-        celular: pacienteSelecionado.celular,
-        celularalternativo: pacienteSelecionado.celularalternativo,
-        dataCadastro: pacienteSelecionado.dataCadastro,
-        
-        // Atualizar dados do último exame e limpar exames ativos
-        ultimoExame: novoHistorico,
-        historicoExames: novoHistoricoCompleto,
-        dataExames: new Date().toLocaleString(),
-        resultadosExames: { ...resultadosExames },
-        
-        // CRÍTICO: Resetar TODOS os campos de exames ativos para null
-        examesSolicitados: null,
-        examesSelecionados: null,
-        examesNaoRealizaveis: null,
-        status: null,
-        statusPagamento: null,
-        valorExames: null,
-        dataSolicitacao: null,
-        dataPagamento: null,
-        metodoPagamento: null,
-        observacoes: null
-      };
-
-      // Forçar atualização com callback
-      const resultado = atualizarUtenteAutonomo(utenteResetado);
-      
-      // Adicionar pequeno delay para garantir que a atualização seja processada
-      setTimeout(() => {
-        message.success({
-          content: `Exames concluídos para ${pacienteSelecionado.nome}! Utente resetado para novo ciclo.`,
-          duration: 3
-        });
-      }, 100);
-    }
-
-    // Mostrar mensagem de sucesso personalizada
-    const examesTotais = (pacienteSelecionado.examesSelecionados || []).length;
-    const examesNaoRealizaveis = (pacienteSelecionado.examesNaoRealizaveis || []).length;
-
-    let mensagemSucesso = `Exames concluídos para ${pacienteSelecionado.nome}!`;
-    if (examesTotais > 0 && examesNaoRealizaveis > 0) {
-      mensagemSucesso += `\n${examesTotais} exame(s) realizados, ${examesNaoRealizaveis} não realizáveis.`;
-    }
-
-    message.success({
-      content: mensagemSucesso,
-      duration: 4
     });
 
-    setIsExameModalVisible(false);
-    setPacienteSelecionado(null);
-    setResultadosExames({});
-    formExames.resetFields();
+    const payload = {
+      hora_conclusao:    new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
+      observacoes_gerais: pacienteSelecionado?.observacoes || '',
+      resultados:        resultadosArray
+    };
+
+    await concluirColheita(agendamentoId, payload, () => {
+      setIsExameModalVisible(false);
+      setPacienteSelecionado(null);
+      setResultadosExames({});
+      formExames.resetFields();
+      agendamentoEmProcessoId.current = null;
+    });
+
+    // Upload de anexos (PDFs / imagens) se existirem
+    for (const [tipoExame, arquivos] of Object.entries(arquivosExames)) {
+      if (arquivos && arquivos.length > 0) {
+        const exameObj = (pacienteSelecionado?.exames || []).find(
+          e => (e.tipo_exame || e.nome) === tipoExame
+        );
+        for (const file of arquivos) {
+          if (file.originFileObj) {
+            const formData = new FormData();
+            formData.append('ficheiro', file.originFileObj);
+            if (exameObj?.id) formData.append('exame_id', exameObj.id);
+            formData.append('descricao', tipoExame);
+            try {
+              await adicionarAnexo(agendamentoId, formData);
+            } catch (_) {
+              // falha no anexo não cancela o sucesso da colheita
+            }
+          }
+        }
+      }
+    }
+    setArquivosExames({});
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Adiciona resultado de um exame ao estado local do modal
+  // ─────────────────────────────────────────────────────────────────────────
   const adicionarResultadoExame = () => {
     const tipoExame = formExames.getFieldValue('tipoExame');
     
@@ -384,132 +263,82 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
     });
   };
 
-  // Colunas para cada tipo de tabela  
+  // ─────────────────────────────────────────────────────────────────────────
+  // COLUNAS DA TABELA — AGENDAMENTOS PENDENTES
+  // ─────────────────────────────────────────────────────────────────────────
   const columnsExamesPendentes = [
     {
-      title: 'NID/Documento',
-      key: 'documento',
-      render: (_, record) => {
-        if (record.tipoUtente === 'autonomo') {
-          // Para utentes autônomos, mostrar NID gerado ou BI como fallback
-          const identificador = record.nid || record.bilheteIdentidade || 'N/A';
-          return (
-            <span style={{ 
-              fontWeight: record.nid ? 'bold' : 'normal',
-              color: record.nid ? '#1890ff' : '#666',
-              backgroundColor: record.nid ? '#f0f9ff' : 'transparent',
-              padding: record.nid ? '2px 4px' : '0',
-              borderRadius: record.nid ? '3px' : '0',
-              fontSize: '12px'
-            }}>
-              {identificador}
-            </span>
-          );
-        } else {
-          return record.nid || 'N/A';
-        }
-      }
+      title: 'NID',
+      dataIndex: 'nid',
+      key: 'nid',
+      render: (nid) => (
+        <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{nid || 'N/A'}</span>
+      )
     },
-    { title: 'Apelido', dataIndex: 'apelido', key: 'apelido' },
     { title: 'Nome', dataIndex: 'nome', key: 'nome' },
     {
-      title: 'Idade',
-      dataIndex: 'dataNascimento',
-      key: 'idade',
-      render: (text) => {
-        if (!text) return 'N/A';
-        let birthDate;
-        if (text && typeof text === 'object' && typeof text.getFullYear === 'function') {
-          birthDate = text;
-        } else if (typeof text === 'string' && !isNaN(Date.parse(text))) {
-          birthDate = new Date(text);
-        } else if (dayjs.isDayjs && dayjs.isDayjs(text)) {
-          birthDate = text.toDate();
-        } else {
-          return 'N/A';
-        }
-        const age = new Date().getFullYear() - birthDate.getFullYear();
-        const monthDiff = new Date().getMonth() - birthDate.getMonth();
-        return (monthDiff < 0 || (monthDiff === 0 && new Date().getDate() < birthDate.getDate())) ? age - 1 : age;
-      }
-    },
-    {
       title: 'Exames Solicitados',
-      key: 'examesSelecionados',
-      render: (_, record) => (
+      dataIndex: 'exames',
+      key: 'exames',
+      render: (exames) => (
         <div>
-          {/* Mostrar apenas os exames selecionados (realizáveis) */}
-          {record.examesSelecionados && Array.isArray(record.examesSelecionados) && record.examesSelecionados.length > 0 ? (
-            <div>
-              {record.examesSelecionados.map((exame, idx) => (
-                <div key={idx} style={{
-                  color: '#52c41a',
-                  fontWeight: 'bold',
-                  marginBottom: '4px'
-                }}>
-                  ✓ {typeof exame === 'object' ? exame.nome || 'Exame sem nome' : exame}
-                </div>
-              ))}
-            </div>
-          ) : record.examesSolicitados && Array.isArray(record.examesSolicitados) && record.examesSolicitados.length > 0 ? (
-            /* Fallback para exames que ainda não passaram pela seleção */
-            <div>
-              {record.examesSolicitados.map((exame, idx) => (
-                <div key={idx} style={{
-                  marginBottom: '4px'
-                }}>
-                  {typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)}
-                </div>
-              ))}
-            </div>
-          ) : record.examesSolicitados ? (
-            <div>
-              {Array.isArray(record.examesSolicitados) 
-                ? record.examesSolicitados.map((exame, idx) => (
-                    <div key={idx}>{typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)}</div>
-                  ))
-                : typeof record.examesSolicitados === 'object'
-                  ? (record.examesSolicitados.nome || JSON.stringify(record.examesSolicitados))
-                  : String(record.examesSolicitados)
-              }
-            </div>
-          ) : (
-            'Nenhum exame especificado'
-          )}
+          {(exames || []).map((e, idx) => (
+            <Tag
+              key={idx}
+              color={e.prioridade === 'urgente' ? 'red' : 'blue'}
+              style={{ marginBottom: 4 }}
+            >
+              {e.tipo_exame || e.nome || e}
+            </Tag>
+          ))}
         </div>
       )
     },
     {
       title: 'Prioridade',
-      dataIndex: 'prioridade',
       key: 'prioridade',
-      render: (prioridade) => {
-        let color = 'blue';
-        if (prioridade === 'Urgente') {
-          color = 'red';
-        } else if (prioridade === 'Baixa') {
-          color = 'green';
-        }
+      render: (_, record) => {
+        const temUrgente = (record.exames || []).some(e => e.prioridade === 'urgente');
         return (
-          <Tag color={color}>{prioridade || 'Normal'}</Tag>
+          <Tag color={temUrgente ? 'red' : 'blue'}>
+            {temUrgente ? 'Urgente' : 'Normal'}
+          </Tag>
         );
       }
     },
     {
-      title: 'Origem',
-      dataIndex: 'solicitadoPor',
-      key: 'solicitadoPor',
-      render: (origem, record) => (
-        <Tag color={record.tipoUtente === 'autonomo' ? 'green' : 'purple'}>
-          {origem || (record.tipoUtente === 'autonomo' ? 'Utente Autônomo' : 'Triagem')}
-        </Tag>
+      title: 'Médico Solicitante',
+      dataIndex: 'medico_solicitante',
+      key: 'medico_solicitante',
+      render: (v) => <Tag color="purple">{v || '—'}</Tag>
+    },
+    {
+      title: 'Hora Colheita',
+      dataIndex: 'hora_colheita',
+      key: 'hora_colheita',
+      render: (v, record) => (
+        <span>
+          {v || '—'}
+          {record.observacoes && (
+            <Tooltip title={record.observacoes}>
+              <span style={{ color: '#faad14', marginLeft: 6 }}>ⓘ</span>
+            </Tooltip>
+          )}
+        </span>
       )
     },
     {
-      title: 'Data da Solicitação',
-      dataIndex: 'dataSolicitacao',
-      key: 'dataSolicitacao',
-      sorter: (a, b) => new Date(a.dataSolicitacao) - new Date(b.dataSolicitacao)
+      title: 'Estado',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => {
+        const map = {
+          agendada:    { color: 'blue',   label: 'Agendada'    },
+          em_colheita: { color: 'orange', label: 'Em Colheita' }
+        };
+        const cfg = map[status] || { color: 'default', label: status };
+        return <Badge color={cfg.color} text={cfg.label} />;
+      }
     },
     {
       title: 'Ações',
@@ -518,17 +347,20 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
         <Button
           type="primary"
           icon={<ExperimentOutlined />}
+          loading={loadingAcao}
           onClick={() => realizarExames(record)}
         >
-          Realizar Exames
+          {record.status === 'em_colheita' ? 'Continuar Colheita' : 'Realizar Exames'}
         </Button>
       )
     }
   ];
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // COLUNAS DA TABELA — HISTÓRICO DE COLHEITAS CONCLUÍDAS
+  // ─────────────────────────────────────────────────────────────────────────
   const columnsExamesConcluidos = [
     { title: 'NID', dataIndex: 'nid', key: 'nid' },
-    { title: 'Apelido', dataIndex: 'apelido', key: 'apelido' },
     { title: 'Nome', dataIndex: 'nome', key: 'nome' },
     {
       title: 'Exames Realizados',
@@ -579,7 +411,7 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
     <div style={{ display: 'flex', justifyContent: 'center', background: '#f5f5f5' }}>
       <div style={{ width: '100%', maxWidth: 1300, padding: 24 }}>
         <Card
-          title="Laboratório - Exames Aprovados e Liberados"
+          title="Laboratório — Colheitas e Resultados"
           style={{
             borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
@@ -597,8 +429,8 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
               tab={
                 <span>
                   <ExperimentOutlined />
-                  Exames Liberados
-                  {pacientesExamesPendentes?.length > 0 &&
+                  Colheitas Agendadas
+                  {agendamentos?.length > 0 &&
                     <span style={{
                       backgroundColor: '#1890ff',
                       color: 'white',
@@ -607,21 +439,22 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
                       fontSize: '12px',
                       marginLeft: '8px'
                     }}>
-                      {pacientesExamesPendentes.length}
+                      {agendamentos.length}
                     </span>
                   }
                 </span>
               }
               key="1"
             >
-              <h3>Pacientes com Exames Liberados para Laboratório</h3>
+              <h3>Colheitas Pendentes e Em Curso</h3>
               <Table
                 columns={columnsExamesPendentes}
-                dataSource={pacientesExamesPendentes}
+                dataSource={agendamentos}
                 rowKey="id"
+                loading={loading}
                 bordered
                 pagination={{ pageSize: 8 }}
-                locale={{ emptyText: 'Não há exames liberados para o laboratório. Os exames devem ser aprovados e pagos na aba "Solicitações de Exames" primeiro.' }}
+                locale={{ emptyText: 'Não há colheitas agendadas. As colheitas são criadas após o paciente pagar os exames na receção.' }}
               />
             </TabPane>
 
@@ -635,14 +468,15 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
               }
               key="2"
             >
-              <h3>Histórico de Exames</h3>
+              <h3>Histórico de Colheitas Concluídas</h3>
               <Table
                 columns={columnsExamesConcluidos}
-                dataSource={examesConcluidosLista}
+                dataSource={agendamentosHistorico}
                 rowKey="id"
+                loading={loading}
                 bordered
                 pagination={{ pageSize: 8 }}
-                locale={{ emptyText: 'Não há exames realizados' }}
+                locale={{ emptyText: 'Não há colheitas concluídas' }}
               />
             </TabPane>
           </Tabs>
@@ -652,7 +486,7 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <ExperimentOutlined style={{ color: '#1890ff', fontSize: '20px' }} />
               <span style={{ color: '#2d3a4a', fontWeight: 'bold', fontSize: '18px' }}>
-                Realizar Exames - {pacienteSelecionado?.nome} {pacienteSelecionado?.apelido}
+                Realizar Exames — {pacienteSelecionado?.nome}
               </span>
             </div>
           }
@@ -666,8 +500,8 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
         >
           {/* Informações do Paciente */}
           <div style={{
-            background: pacienteSelecionado?.tipoUtente === 'autonomo' ? '#e6f7ff' : '#fff3cd',
-            border: pacienteSelecionado?.tipoUtente === 'autonomo' ? '1px solid #91d5ff' : '1px solid #ffeaa7',
+            background: '#e6f7ff',
+            border: '1px solid #91d5ff',
             borderRadius: 8,
             padding: 16,
             marginBottom: 20
@@ -675,30 +509,18 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
             <Row gutter={16}>
               <Col span={12}>
                 <div style={{ marginBottom: 8 }}>
-                  <UserOutlined style={{ 
-                    color: pacienteSelecionado?.tipoUtente === 'autonomo' ? '#1890ff' : '#d4621b', 
-                    marginRight: 8, fontSize: 16 
-                  }} />
-                  <span style={{ 
-                    fontWeight: 'bold', 
-                    color: pacienteSelecionado?.tipoUtente === 'autonomo' ? '#1890ff' : '#d4621b',
-                    fontSize: 16
-                  }}>
-                    {pacienteSelecionado?.nome} {pacienteSelecionado?.apelido}
+                  <UserOutlined style={{ color: '#1890ff', marginRight: 8, fontSize: 16 }} />
+                  <span style={{ fontWeight: 'bold', color: '#1890ff', fontSize: 16 }}>
+                    {pacienteSelecionado?.nome}
                   </span>
                 </div>
                 <div style={{ marginLeft: 24, color: '#555' }}>
-                  <div><strong>Tipo:</strong> {pacienteSelecionado?.tipoUtente === 'autonomo' ? 'Utente Autônomo' : 'Utente Regular'}</div>
-                  <div><strong>Documento:</strong> {
-                    pacienteSelecionado?.tipoUtente === 'autonomo' 
-                      ? `${pacienteSelecionado?.tipoDocumento?.toUpperCase()}: ${pacienteSelecionado?.bilheteIdentidade}`
-                      : `NID: ${pacienteSelecionado?.nid}`
-                  }</div>
-                  {pacienteSelecionado?.celular && (
-                    <div><strong>Celular:</strong> {pacienteSelecionado.celular}</div>
+                  <div><strong>NID:</strong> {pacienteSelecionado?.nid}</div>
+                  {pacienteSelecionado?.data_colheita && (
+                    <div><strong>Data Colheita:</strong> {dayjs(pacienteSelecionado.data_colheita).format('DD/MM/YYYY')}</div>
                   )}
-                  {pacienteSelecionado?.hospitalProveniencia && (
-                    <div><strong>Hospital de Proveniência:</strong> {pacienteSelecionado.hospitalProveniencia}</div>
+                  {pacienteSelecionado?.hora_colheita && (
+                    <div><strong>Hora:</strong> {pacienteSelecionado.hora_colheita}</div>
                   )}
                 </div>
               </Col>
@@ -744,39 +566,21 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
               <ExperimentOutlined style={{ marginRight: 8 }} />
               Exames para Realizar:
             </h4>
-            {pacienteSelecionado?.examesSelecionados && Array.isArray(pacienteSelecionado.examesSelecionados) && pacienteSelecionado.examesSelecionados.length > 0 ? (
+            {pacienteSelecionado?.exames && Array.isArray(pacienteSelecionado.exames) && pacienteSelecionado.exames.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {pacienteSelecionado.examesSelecionados.map((exame, index) => (
+                {pacienteSelecionado.exames.map((exame, index) => (
                   <Tag key={index} color="blue" style={{ fontSize: '13px', padding: '4px 8px' }}>
-                    {typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)}
-                  </Tag>
-                ))}
-              </div>
-            ) : pacienteSelecionado?.examesSolicitados && Array.isArray(pacienteSelecionado.examesSolicitados) && pacienteSelecionado.examesSolicitados.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {pacienteSelecionado.examesSolicitados.map((exame, index) => (
-                  <Tag key={index} color="blue" style={{ fontSize: '13px', padding: '4px 8px' }}>
-                    {typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)}
+                    {exame.tipo_exame || exame.nome || String(exame)}
+                    {exame.prioridade && exame.prioridade !== 'Normal' && (
+                      <span style={{ marginLeft: 4, color: '#ff4d4f', fontWeight: 'bold' }}>
+                        [{exame.prioridade}]
+                      </span>
+                    )}
                   </Tag>
                 ))}
               </div>
             ) : (
-              <p style={{ color: '#999', fontStyle: 'italic' }}>Nenhum exame específico solicitado</p>
-            )}
-            
-            {pacienteSelecionado?.examesNaoRealizaveis && pacienteSelecionado.examesNaoRealizaveis.length > 0 && (
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #d1d5db' }}>
-                <div style={{ fontSize: '14px', color: '#dc2626', marginBottom: 8 }}>
-                  <strong>Exames não realizáveis nesta clínica:</strong>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {pacienteSelecionado.examesNaoRealizaveis.map((exame, index) => (
-                    <Tag key={index} color="red" style={{ fontSize: '12px', padding: '2px 6px' }}>
-                      {typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)}
-                    </Tag>
-                  ))}
-                </div>
-              </div>
+              <p style={{ color: '#999', fontStyle: 'italic' }}>Nenhum exame listado</p>
             )}
           </div>
 
@@ -921,9 +725,9 @@ const LaboratorioPaciente = () => {  // Atualizar de triagens para exames penden
                               .then(() => {
                                 adicionarResultadoExame();
                               })
-                              .catch(err => {
-                                console.log('Validation Failed:', err);
-                              });
+                                .catch(err => {
+                                  // Validation failed, handle error if needed
+                                });
                           }}
                           style={{
                             background: '#1890ff',

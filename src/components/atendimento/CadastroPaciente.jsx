@@ -4,7 +4,7 @@ import usePacientes from '../../hooks/usePacientes';
 // ❌ REMOVIDO: import useConfigurations from '../../hooks/useConfigurations';
 import useParentes from '../../hooks/useParentes';
 import useUtentesAutonomos from '../../hooks/useUtentesAutonomos';
-import configurationService from '../../services/configurationService';
+import useSolicitacaoExames from '../../hooks/useSolicitacaoExames';
 import axios from 'axios';
 import {
   Table,
@@ -12,6 +12,7 @@ import {
   Modal,
   Form,
   Input,
+  InputNumber,
   Space,
   Select,
   DatePicker,
@@ -22,12 +23,12 @@ import {
   Steps,
   Card,
   Checkbox,
+  Switch,
   Radio,
   Tabs,
   Typography,
   Alert,
-  Divider,
-  Tag
+
 } from 'antd';
 import { PlusOutlined, EditOutlined, SolutionOutlined, UploadOutlined, SearchOutlined, UserOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -87,45 +88,26 @@ const CadastroPaciente = () => {
   const [triagensRealizadas, setTriagensRealizadas] = useState([]);
   const [pacientesTransferidosEspecialidade, setPacientesTransferidosEspecialidade] = useState([]);
   const [consultasPendentes, setConsultasPendentes] = useState([]);
-  const [consultasRealizadas, setConsultasRealizadas] = useState([]); // Restaurado: é utilizado em várias partes
-  const [examesPendentes, setExamesPendentes] = useState([]);
+  const [consultasRealizadas] = useState([]); // Restaurado: é utilizado em várias partes
+
+  // Dados de exames pendentes vindos da API (patient-service :8002)
+  const {
+    solicitacoes: examesPendentes,
+    fetchSolicitacoes,
+    confirmarExames,
+    rejeitarSolicitacao,
+    processarPagamento,
+    agendarColheita,
+    // cancelarSolicitacao,
+    loading: loadingExamesPendentes,
+    // loadingAcao: loadingAcaoExames
+  } = useSolicitacaoExames();
 
   // � Estados para dados de referência externa (Configuration Service - porta 8004)
-  const [configuracoesReferencia, setConfiguracoesReferencia] = useState({
-    racas: [],
-    tipos_utentes: [],
-    unidades_organicas: [],
-    tipos_documento: [],
-    provincias: []
-  });
-  const [loadingConfiguracoes, setLoadingConfiguracoes] = useState(true);
+  const [loadingConfiguracoes, setLoadingConfiguracoes] = useState(false);
 
   // �🚀 Carregar configurações de referência externa do Configuration Service (porta 8004)
   useEffect(() => {
-    const carregarConfiguracoesReferencia = async () => {
-      console.log('🔄 Iniciando carregamento de configurações do Configuration Service (porta 8004)...');
-      setLoadingConfiguracoes(true);
-      
-      try {
-        const response = await configurationService.getAllConfigurations();
-        
-        if (response.success) {
-          console.log('✅ Configurações carregadas com sucesso:', response.data);
-          setConfiguracoesReferencia(response.data);
-          
-          message.success('Configurações carregadas com sucesso!');
-        } else {
-          console.error('❌ Erro ao carregar configurações:', response.message);
-          message.error(`Erro ao carregar configurações: ${response.message}`);
-        }
-      } catch (error) {
-        console.error('❌ Erro crítico ao carregar configurações:', error);
-        message.error('Erro crítico: Não foi possível carregar as configurações do sistema.');
-      } finally {
-        setLoadingConfiguracoes(false);
-      }
-    };
-    
     // ❌ REMOVIDO: Configuration Service não funcionando corretamente
     setLoadingConfiguracoes(false); // Usar apenas dados do Patient Service
   }, []); // Executa apenas uma vez na montagem
@@ -137,6 +119,11 @@ const CadastroPaciente = () => {
       setPacientes(apiPacientes);
     }
   }, [apiPacientes]);
+
+  // Carregar solicitações de exames ao montar o componente
+  useEffect(() => {
+    fetchSolicitacoes();
+  }, [fetchSolicitacoes]);
 
   // ===== HANDLERS PARA CARREGAMENTO EM CASCATA =====
   
@@ -293,6 +280,14 @@ const CadastroPaciente = () => {
   const [exameParaMarcar, setExameParaMarcar] = useState(null);
   const [examesSelecionados, setExamesSelecionados] = useState([]);
   const [marcarExamesForm] = Form.useForm();
+  // Estados para o modal de confirmar disponibilidade e preços
+  const [isConfirmarExamesModalVisible, setIsConfirmarExamesModalVisible] = useState(false);
+  const [exameParaConfirmar, setExameParaConfirmar] = useState(null);
+  const [examesParaConfirmar, setExamesParaConfirmar] = useState([]);
+  // Estados para o modal de rejeitar solicitação
+  const [isRejeitarExameModalVisible, setIsRejeitarExameModalVisible] = useState(false);
+  const [exameParaRejeitar, setExameParaRejeitar] = useState(null);
+  const [rejeitarExameForm] = Form.useForm();
 
   // Estados para o modal de histórico de exames
   const [isHistoricoModalVisible, setIsHistoricoModalVisible] = useState(false);
@@ -302,11 +297,6 @@ const CadastroPaciente = () => {
   const [isAcompanhamentoModalVisible, setIsAcompanhamentoModalVisible] = useState(false);
   const [pacienteAcompanhamento, setPacienteAcompanhamento] = useState(null);
   const [acompanhamentoForm] = Form.useForm();
-  
-  // Estados para modal de diagnóstico de erro 500
-  const [isDiagnosticoModalVisible, setIsDiagnosticoModalVisible] = useState(false);
-  const [diagnosticoData, setDiagnosticoData] = useState(null);
-  const [pacienteDiagnostico, setPacienteDiagnostico] = useState(null);
   
   // Estado para forçar re-renderização da tabela
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -326,49 +316,6 @@ const CadastroPaciente = () => {
   const [userHasChangedFormValues, setUserHasChangedFormValues] = useState(false);
 
   // 🔍 Função para testar configurações do Configuration Service
-  const testarValidacaoRaca = async () => {
-    try {
-      console.log('🔍 ===========================================');
-      console.log('🔍 TESTE - Configurações do Configuration Service (porta 8004)');
-      console.log('🔍 ===========================================');
-      
-      // Estado atual das configurações
-      console.log('📊 Estado atual das configurações:');
-      console.log('   Loading:', loadingConfiguracoes);
-      console.log('   Raças:', configuracoesReferencia.racas?.length || 0);
-      console.log('   Tipos utentes:', configuracoesReferencia.tipos_utentes?.length || 0);
-      console.log('   Unidades orgânicas:', configuracoesReferencia.unidades_organicas?.length || 0);
-      console.log('   Tipos documento:', configuracoesReferencia.tipos_documento?.length || 0);
-      
-      // Teste direto do Configuration Service
-      console.log('🔄 Testando Configuration Service diretamente...');
-      const configResponse = await configurationService.getAllConfigurations();
-      console.log('📋 Resposta do Configuration Service:', configResponse);
-      
-      if (configResponse.success) {
-        console.log('✅ Configuration Service funcionando!');
-        console.log('   Raças:', configResponse.data?.racas?.length || 0);
-        console.log('   Tipos utentes:', configResponse.data?.tipos_utentes?.length || 0);
-        console.log('   Unidades orgânicas:', configResponse.data?.unidades_organicas?.length || 0);
-        
-        // Mostrar primeiros itens de cada tipo
-        if (configResponse.data?.racas?.length > 0) {
-          console.log('🎨 Primeiras raças:', configResponse.data.racas.slice(0, 3));
-        }
-        if (configResponse.data?.tipos_utentes?.length > 0) {
-          console.log('👥 Primeiros tipos utentes:', configResponse.data.tipos_utentes.slice(0, 3));
-        }
-        
-        message.success(`Configuration Service OK! Raças: ${configResponse.data?.racas?.length || 0}, Tipos: ${configResponse.data?.tipos_utentes?.length || 0}`);
-      } else {
-        console.error('❌ Erro no Configuration Service:', configResponse.message);
-        message.error(`Erro no Configuration Service: ${configResponse.message}`);
-      }
-    } catch (error) {
-      console.error('❌ Erro no teste:', error);
-      message.error('Erro ao testar validação de raças');
-    }
-  };
 
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -376,7 +323,6 @@ const CadastroPaciente = () => {
   // Função para carregar configurações de pagamento dos endpoints específicos
   const carregarConfiguracoesPagemento = useCallback(async () => {
     if (metodosPagamento.length > 0) {
-      console.log('📋 Configurações de pagamento já carregadas');
       return;
     }
 
@@ -384,38 +330,12 @@ const CadastroPaciente = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.warn('⚠️ Token não encontrado para carregar configurações de pagamento');
         return;
       }
 
-      // console.log('🔄 Carregando configurações de pagamento...');
-
-      // // OPÇÃO 1: Usar rota consolidada do PagamentoConsultaController (RECOMENDADO)
-      // try {
-      //   const configResponse = await fetch('http://localhost:8002/api/pacientes/configuracao-pagamento', {
-      //     method: 'GET',
-      //     headers: {
-      //       'Authorization': `Bearer ${token}`,
-      //       'Content-Type': 'application/json'
-      //     }
-      //   });
-
-      //   if (configResponse.ok) {
-      //     const configData = await configResponse.json();
-      //     setMetodosPagamento(Array.isArray(configData.metodos_pagamento) ? configData.metodos_pagamento : []);
-      //     setTiposConsulta(Array.isArray(configData.tipos_consulta) ? configData.tipos_consulta : []);
-      //     console.log('✅ Configurações consolidadas carregadas:', {
-      //       metodos: configData.metodos_pagamento?.length || 0,
-      //       tipos: configData.tipos_consulta?.length || 0
-      //     });
-      //     return;
-      //   }
-      // } catch (error) {
-      //   console.warn('⚠️ Rota consolidada não disponível, usando rotas separadas:', error.message);
-      // }
 
       // FALLBACK: Usar rotas separadas se rota consolidada falhar
-      const metodosResponse = await fetch('http://localhost:8002/api/pacientes/metodos-pagamento', {
+      const metodosResponse = await fetch('http://127.0.0.1:8004/api/metodos-pagamento', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -424,7 +344,7 @@ const CadastroPaciente = () => {
       });
 
       // Carregar tipos de consulta
-      const tiposResponse = await fetch('http://localhost:8002/api/pacientes/tipos-consulta', {
+      const tiposResponse = await fetch('http://127.0.0.1:8004/api/tipos-consulta', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -433,28 +353,22 @@ const CadastroPaciente = () => {
       });
 
       if (metodosResponse.ok) {
-        const metodosData = await metodosResponse.json();
-        // Garantir que seja sempre um array
-        setMetodosPagamento(Array.isArray(metodosData) ? metodosData : []);
-        console.log('✅ Métodos de pagamento carregados:', metodosData?.length || 0);
+        const metodosJson = await metodosResponse.json();
+        const metodosData = metodosJson?.data || metodosJson || [];
+        const metodosArray = Array.isArray(metodosData) ? metodosData : [];
+        setMetodosPagamento(metodosArray);
       } else {
-        console.warn('⚠️ Falha ao carregar métodos de pagamento');
         setMetodosPagamento([]);
       }
 
       if (tiposResponse.ok) {
         const tiposData = await tiposResponse.json();
-        // Garantir que seja sempre um array
         setTiposConsulta(Array.isArray(tiposData) ? tiposData : []);
-        console.log('✅ Tipos de consulta carregados:', tiposData?.length || 0);
       } else {
-        console.warn('⚠️ Falha ao carregar tipos de consulta');
         setTiposConsulta([]);
       }
 
     } catch (error) {
-      console.error('❌ Erro ao carregar configurações de pagamento:', error);
-      // Garantir que sejam sempre arrays mesmo em caso de erro
       setMetodosPagamento([]);
       setTiposConsulta([]);
     } finally {
@@ -469,18 +383,14 @@ const CadastroPaciente = () => {
   
   // Função auxiliar para buscar valor usando dados já carregados (fallback)
   const buscarValorFallback = useCallback((tipoConsultaId, tipoUtenteId) => {
-    console.log('🔄 Usando fallback para valor da consulta');
-    
     // Verificação de segurança: garantir que tiposConsulta seja um array
     if (!Array.isArray(tiposConsulta)) {
-      console.warn('⚠️ tiposConsulta não é um array:', typeof tiposConsulta, tiposConsulta);
       return null;
     }
     
     // Primeiro, verificar se é estudante bolseiro (isento)
     const tipoUtente = patientServiceTiposUtentes?.find(t => t.id === tipoUtenteId);
     if (tipoUtente?.codigo === 'EST-B') {
-      console.log('🎓 Estudante bolseiro detectado - valor 0');
       return '0';
     }
     
@@ -490,28 +400,18 @@ const CadastroPaciente = () => {
     );
     
     if (tipoConsulta && tipoConsulta.valor_default) {
-      console.log('💰 Valor encontrado nos dados locais:', tipoConsulta.valor_default);
       return tipoConsulta.valor_default.toString();
     }
-    
-    console.warn('⚠️ IMPORTANTE: Nenhum valor encontrado para consulta. Sistema deve usar tabela preco_consultas do backend para todos os preços!');
-    console.warn(`Tipo consulta: ${tipoConsultaId}, Tipo utente: ${tipoUtenteId}, tiposConsulta disponíveis:`, tiposConsulta.length);
     return null; // Não retornar valor fixo, forçar busca no backend
   }, [tiposConsulta, patientServiceTiposUtentes]);
 
   // Função para buscar valor da consulta com base no tipo de consulta e tipo de utente
   const buscarValorConsulta = useCallback(async (tipoConsultaId, tipoUtenteId) => {
     try {
-      console.log('🔍 Buscando valor da consulta:', { tipoConsultaId, tipoUtenteId });
-      
       const token = localStorage.getItem('token');
       if (!token) {
-        console.warn('Token não encontrado para buscar valor da consulta');
         return buscarValorFallback(tipoConsultaId, tipoUtenteId);
       }
-
-      // 1. Primeiro verificar se o preço está disponível no sistema
-      console.log('🔎 Verificando se preço está configurado no backend...');
       const verificarResponse = await fetch(`http://localhost:8002/api/pacientes/verificar-preco-disponivel?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
         method: 'GET',
         headers: {
@@ -519,18 +419,11 @@ const CadastroPaciente = () => {
           'Content-Type': 'application/json'
         }
       });
-
       if (verificarResponse.ok) {
         const check = await verificarResponse.json();
-        console.log('📋 Verificação de preço:', check);
-
         if (!check.disponivel) {
-          console.error('❌ Preço não configurado no sistema:', check.message);
           throw new Error(`Preço da consulta não configurado no sistema: ${check.message}`);
         }
-
-        // 2. Se disponível, buscar o valor da consulta
-        console.log('✅ Preço disponível, buscando valor...');
         const response = await fetch(`http://localhost:8002/api/pacientes/valor-consulta?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
@@ -538,26 +431,18 @@ const CadastroPaciente = () => {
             'Content-Type': 'application/json'
           }
         });
-
         if (response.ok) {
           const resultado = await response.json();
-          console.log('💰 Valor da consulta obtido do backend:', resultado);
           const valor = resultado.data?.valor || resultado.valor || resultado.valor_consulta;
-          
           if (valor) {
-            console.log(`✅ Valor encontrado: ${valor}`);
             return valor.toString();
           } else {
-            console.warn('⚠️ Resposta sem valor válido, usando fallback');
             return buscarValorFallback(tipoConsultaId, tipoUtenteId);
           }
         } else {
-          console.warn('⚠️ Erro na busca do valor, usando fallback');
           return buscarValorFallback(tipoConsultaId, tipoUtenteId);
         }
       } else {
-        console.warn('⚠️ Endpoint de verificação não disponível, tentando busca direta...');
-        // Fallback: tentar busca direta mesmo sem verificação
         const response = await fetch(`http://localhost:8002/api/pacientes/valor-consulta?tipo_consulta_id=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
@@ -565,20 +450,14 @@ const CadastroPaciente = () => {
             'Content-Type': 'application/json'
           }
         });
-
         if (response.ok) {
           const resultado = await response.json();
-          console.log('💰 Valor da consulta obtido do backend (busca direta):', resultado);
           return resultado.valor || resultado.valor_consulta || buscarValorFallback(tipoConsultaId, tipoUtenteId);
         } else {
-          console.warn('Endpoint específico não disponível, usando fallback');
           return buscarValorFallback(tipoConsultaId, tipoUtenteId);
         }
       }
-      
     } catch (error) {
-      console.error('❌ Erro ao buscar valor da consulta:', error);
-      // Se o erro contém informação sobre preço não configurado, propagar o erro
       if (error.message.includes('Preço da consulta não configurado')) {
         throw error;
       }
@@ -592,12 +471,9 @@ const CadastroPaciente = () => {
     
     const metodo = metodoPagamento.toLowerCase();
     const isMetodoIsencaoValido = metodo === 'isencao' || metodo === 'isenção' || metodo.includes('isen');
-    
-    // Isenção só é válida para estudantes bolseiros (tipo_utente_id = 2)
     if (isMetodoIsencaoValido && tipoUtenteId) {
       return tipoUtenteId === 2;
     }
-    
     return false;
   }, []);
 
@@ -605,205 +481,52 @@ const CadastroPaciente = () => {
   const validarValorBackend = useCallback((valor, tipoConsultaId, tipoUtenteId, metodoPagamento = null) => {
     // Se for isenção E o paciente for estudante bolseiro, não precisa validar valor
     if (metodoPagamento && isMetodoIsencao(metodoPagamento, tipoUtenteId)) {
-      console.log('✅ Método isenção detectado para estudante bolseiro, valor não necessário');
       return true;
     }
-    
     if (!valor || valor === null || valor === undefined || valor === '') {
-      console.error('❌ ERRO CRÍTICO: Valor da consulta não foi carregado do backend!');
-      console.error('📋 Dados:', { valor, tipoConsultaId, tipoUtenteId });
-      console.error('🔧 Solução: Verificar se a tabela preco_consultas tem dados para esta combinação');
-      console.error('📞 Orientação: Entre em contato com o administrador para configurar os preços no sistema');
       return false;
     }
-    
-    // Verificar se é um valor numérico válido
     const valorNumerico = parseFloat(valor);
     if (isNaN(valorNumerico) || valorNumerico < 0) {
-      console.error('❌ ERRO: Valor da consulta não é um número válido:', valor);
       return false;
     }
-    
-    console.log('✅ Valor da consulta validado com sucesso:', valor);
     return true;
   }, [isMetodoIsencao]);
 
   // Função para lidar com mudança do método de pagamento
   const handleMetodoPagamentoChange = useCallback(async (metodoPagamento, form, tipoConsulta, tipoUtenteId) => {
-    console.log('💳 Método de pagamento alterado:', metodoPagamento);
-    
-    // Verificar se é estudante bolseiro (tipo_utente_id = 2)
     const isEstudanteBolseiro = tipoUtenteId === 2;
-    
     if (isMetodoIsencao(metodoPagamento, tipoUtenteId)) {
-      // Se for isenção E for estudante bolseiro, definir valor como 0
-      console.log('🎓 Isenção aplicada para estudante bolseiro, definindo valor como 0');
       form.setFieldsValue({ valor: '0' });
     } else if (metodoPagamento && metodoPagamento.toLowerCase().includes('isen') && !isEstudanteBolseiro) {
-      // Se tentou selecionar isenção mas não é estudante bolseiro, mostrar aviso
       message.warning('Isenção de pagamento disponível apenas para estudantes bolseiros.');
       form.setFieldsValue({ metodoPagamento: null, valor: '' });
     } else {
-      // Se não for isenção, buscar valor do backend
       if (tipoConsulta && tipoUtenteId) {
         try {
-          console.log('🔍 Buscando valor para método não-isenção...');
           const valor = await buscarValorConsulta(tipoConsulta, tipoUtenteId);
-          
           if (valor && valor !== '0') {
-            console.log('💰 Valor encontrado para consulta:', valor);
             form.setFieldsValue({ valor: valor.toString() });
           } else {
-            console.log('⚠️ Valor não encontrado, deixando campo vazio');
             form.setFieldsValue({ valor: '' });
           }
         } catch (error) {
-          console.error('❌ Erro ao buscar valor para método não-isenção:', error);
           form.setFieldsValue({ valor: '' });
         }
       }
     }
   }, [isMetodoIsencao, buscarValorConsulta]);
   
-  // Função para diagnosticar problemas de conectividade e dados do paciente
-  const diagnosticarPaciente = async (paciente) => {
-    const diagnostico = {
-      timestamp: new Date().toISOString(),
-      pacienteId: paciente.id,
-      testes: {},
-      recomendacoes: []
-    };
-    
-    try {
-      const token = localStorage.getItem('token');
+
+
       
-      // Teste 1: Verificar token
-      diagnostico.testes.token = {
-        status: token ? 'OK' : 'ERRO',
-        detalhes: token ? 'Token encontrado' : 'Token não encontrado no localStorage'
-      };
-      
-      if (!token) {
-        diagnostico.recomendacoes.push('Faça login novamente para obter um token válido');
-        return diagnostico;
-      }
-      
-      // Teste 2: Verificar se paciente existe no backend (usando NID)
-      try {
-        let testUrl = `http://localhost:8002/api/pacientes/${paciente.id}`;
-        
-        // Se tiver NID, testar também a rota por NID
-        if (paciente.nid && paciente.nid.includes('/')) {
-          const nidParts = paciente.nid.split('/');
-          const numero = nidParts[0];
-          const ano = nidParts[1];
-          testUrl = `http://localhost:8002/api/pacientes/nid/${numero}/${ano}/dados-pagamento`;
-        }
-        
-        const pacienteResponse = await fetch(testUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        diagnostico.testes.pacienteExiste = {
-          status: pacienteResponse.ok ? 'OK' : 'ERRO',
-          codigo: pacienteResponse.status,
-          detalhes: pacienteResponse.ok ? 
-            `Paciente encontrado via ${paciente.nid ? 'NID' : 'ID'}` : 
-            `Erro ${pacienteResponse.status}: ${pacienteResponse.statusText}`,
-          urlTestada: testUrl
-        };
-        
-        if (!pacienteResponse.ok) {
-          diagnostico.recomendacoes.push(`Paciente ${paciente.nid || `ID ${paciente.id}`} não existe no backend ou não pode ser acessado`);
-        }
-      } catch (error) {
-        diagnostico.testes.pacienteExiste = {
-          status: 'ERRO',
-          detalhes: `Erro de conexão: ${error.message}`
-        };
-        diagnostico.recomendacoes.push('Verifique se o servidor backend está funcionando');
-      }
-      
-      // Teste 3: Verificar dados essenciais do paciente
-      const camposObrigatorios = ['id', 'nome', 'tipoUtenteId'];
-      const camposFaltando = camposObrigatorios.filter(campo => !paciente[campo]);
-      
-      diagnostico.testes.dadosEssenciais = {
-        status: camposFaltando.length === 0 ? 'OK' : 'ALERTA',
-        detalhes: camposFaltando.length === 0 ? 'Todos os campos obrigatórios presentes' : `Campos faltando: ${camposFaltando.join(', ')}`,
-        camposFaltando
-      };
-      
-      if (camposFaltando.length > 0) {
-        diagnostico.recomendacoes.push('Alguns campos obrigatórios estão faltando. Isso pode causar erro 500 no backend.');
-      }
-      
-      // Teste 4: Verificar tipo de utente
-      if (paciente.tipoUtenteId) {
-        const tipoUtente = patientServiceTiposUtentes?.find(tipo => tipo.id === paciente.tipoUtenteId);
-        diagnostico.testes.tipoUtente = {
-          status: tipoUtente ? 'OK' : 'ALERTA',
-          detalhes: tipoUtente ? `Tipo encontrado: ${tipoUtente.nome}` : `Tipo ID ${paciente.tipoUtenteId} não encontrado na lista local`
-        };
-        
-        if (!tipoUtente) {
-          diagnostico.recomendacoes.push('Tipo de utente não encontrado. Pode causar erro no backend.');
-        }
-      }
-      
-      // Teste 5: Verificar conectividade com endpoint específico
-      try {
-        const testeResponse = await fetch('http://localhost:8002/api/health', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        diagnostico.testes.conectividade = {
-          status: testeResponse.ok ? 'OK' : 'ALERTA',
-          detalhes: testeResponse.ok ? 'Backend acessível' : 'Backend pode estar indisponível'
-        };
-      } catch (error) {
-        diagnostico.testes.conectividade = {
-          status: 'ERRO',
-          detalhes: 'Não foi possível conectar ao backend'
-        };
-        diagnostico.recomendacoes.push('Verifique se o servidor backend está rodando na porta 8002');
-      }
-      
-      // Adicionar dados do paciente para análise
-      diagnostico.dadosPaciente = {
-        id: paciente.id,
-        nome: paciente.nome,
-        nid: paciente.nid,
-        tipoUtenteId: paciente.tipoUtenteId,
-        celular: paciente.celular,
-        email: paciente.email,
-        statusPagamentoConsulta: paciente.statusPagamentoConsulta
-      };
-      
-      return diagnostico;
-      
-    } catch (error) {
-      diagnostico.testes.geral = {
-        status: 'ERRO',
-        detalhes: `Erro durante diagnóstico: ${error.message}`
-      };
-      diagnostico.recomendacoes.push('Erro inesperado durante diagnóstico. Verifique o console para mais detalhes.');
-      return diagnostico;
-    }
-  };
+
+
+
   
   // Função para carregar configurações do Patient Service (porta 8002)
   const carregarConfiguracoesPatientService = useCallback(async () => {
     if (patientServiceRacas.length > 0) {
-      console.log('📋 Usando configurações já carregadas do Patient Service');
       return;
     }
 
@@ -821,7 +544,7 @@ const CadastroPaciente = () => {
         'Content-Type': 'application/json'
       };
 
-      console.log('📤 Carregando configurações do Patient Service (porta 8002)...');
+      // Carregando configurações do Patient Service (porta 8002)...
 
       // Carregar todas as configurações em paralelo
       const [
@@ -832,12 +555,12 @@ const CadastroPaciente = () => {
         provinciasRes,
         grausParentescoRes
       ] = await Promise.all([
-        axios.get('http://localhost:8002/api/pacientes/racas', { headers }),
-        axios.get('http://localhost:8002/api/pacientes/tipos-utentes', { headers }),
-        axios.get('http://localhost:8002/api/pacientes/unidades-organicas', { headers }),
-        axios.get('http://localhost:8002/api/pacientes/tipos-documentos', { headers }),
-        axios.get('http://localhost:8002/api/pacientes/provincias', { headers }),
-        axios.get('http://localhost:8002/api/pacientes/graus-parentesco', { headers })
+        axios.get('http://localhost:8004/api/racas', { headers }),
+        axios.get('http://localhost:8004/api/tipos-utentes', { headers }),
+        axios.get('http://localhost:8004/api/unidades-organicas', { headers }),
+        axios.get('http://localhost:8004/api/tipos-documentos', { headers }),
+        axios.get('http://localhost:8004/api/provincias', { headers }),
+        axios.get('http://localhost:8004/api/graus-parentesco', { headers })
       ]);
 
       // Processar respostas (suporta tanto data.data quanto data)
@@ -855,14 +578,7 @@ const CadastroPaciente = () => {
       setPatientServiceProvincias(provinciasData);
       setPatientServiceGrausParentesco(grausParentescoData);
 
-      console.log('✅ Configurações carregadas do Patient Service:', {
-        racas: racasData.length,
-        tiposUtentes: tiposUtentesData.length,
-        unidadesOrganicas: unidadesOrganicasData.length,
-        tiposDocumentos: tiposDocumentosData.length,
-        provincias: provinciasData.length,
-        grausParentesco: grausParentescoData.length
-      });
+      // Configurações carregadas do Patient Service
 
     } catch (error) {
       console.error('❌ Erro ao carregar configurações do Patient Service:', error);
@@ -877,22 +593,123 @@ const CadastroPaciente = () => {
     carregarConfiguracoesPatientService();
   }, [carregarConfiguracoesPatientService]);
 
+  // 🔥 Carregar pacientes transferidos para especialidade da API
+  const carregarPacientesTransferidosEspecialidade = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+      if (!token) {
+        setPacientesTransferidosEspecialidade([]);
+        return;
+      }
+
+      // Carregando pacientes transferidos para especialidade da porta 8002...
+
+      const response = await axios.get('http://127.0.0.1:8002/api/pacientes/transferidos-especialidade', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        timeout: 5000 // 5 segundos de timeout
+      });
+
+      // Extrair dados da resposta paginada do Laravel
+      let transferidosData = [];
+      
+      if (response.data) {
+        // Formato: { status: "success", data: { data: [...] } } (paginação Laravel)
+        if (response.data.status === 'success' && response.data.data && response.data.data.data) {
+          transferidosData = response.data.data.data;
+        }
+        // Formato alternativo: { data: { data: [...] } }
+        else if (response.data.data && Array.isArray(response.data.data.data)) {
+          transferidosData = response.data.data.data;
+        }
+        // Formato: { data: [...] }
+        else if (response.data.data && Array.isArray(response.data.data)) {
+          transferidosData = response.data.data;
+        }
+        // Formato: [...]
+        else if (Array.isArray(response.data)) {
+          transferidosData = response.data;
+        }
+      }
+      
+      // Normalizar dados para o formato esperado pelo frontend
+      const transferidosNormalizados = transferidosData.map(consulta => {
+        const historico = consulta.transferencia_historico?.[0];
+        const especialidadeAnterior = consulta.especialidade_anterior || 
+                                       historico?.especialidade_origem || 
+                                       'N/A';
+        const dataTransferencia = historico?.data_transferencia || 
+                                   consulta.created_at;
+        return {
+          // IDs
+          id: consulta.paciente?.id || consulta.paciente_id,
+          paciente_id: consulta.paciente_id,
+          consulta_id: consulta.id,
+          agendamento_id: consulta.agendamento_id,
+          triagem_id: consulta.triagem_id,
+          
+          // Dados do paciente
+          nid: consulta.paciente?.nid || consulta.nid,
+          nome: consulta.paciente?.nome,
+          apelido: consulta.paciente?.apelido,
+          genero: consulta.paciente?.genero,
+          data_nascimento: consulta.paciente?.data_nascimento,
+          telefone: consulta.paciente?.telefone,
+          email: consulta.paciente?.email,
+          
+          // Dados da consulta/transferência
+          especialidade: consulta.especialidade,
+          especialidade_destino: consulta.especialidade,
+          especialidade_anterior: especialidadeAnterior,
+          especialidadeAnterior: especialidadeAnterior, // Para compatibilidade com dataIndex
+          especialidade_id: consulta.especialidade_id,
+          medico: consulta.medico,
+          medico_id: consulta.medico_id,
+          medico_anterior: consulta.medico_anterior,
+          
+          // Status e datas
+          status: consulta.status,
+          status_pagamento: consulta.status_pagamento,
+          data_consulta: consulta.data_consulta,
+          hora_consulta: consulta.hora_consulta,
+          data_transferencia: dataTransferencia,
+          dataTransferencia: dataTransferencia, // Para compatibilidade com dataIndex
+          prioridade: consulta.prioridade,
+          transferido: consulta.transferido,
+          
+          // Informações adicionais
+          motivo_transferencia: consulta.motivo_transferencia,
+          motivo_consulta: consulta.motivo_consulta,
+          observacoes: consulta.observacoes,
+          tipo_consulta: consulta.tipo_consulta,
+          tipo_consulta_id: consulta.tipo_consulta_id,
+          valor_consulta: consulta.valor_consulta,
+          forma_pagamento: consulta.forma_pagamento,
+          data_pagamento: consulta.data_pagamento,
+          
+          // Histórico de transferência
+          transferencia_historico: consulta.transferencia_historico,
+          
+          // Objeto paciente completo para referência
+          pacienteCompleto: consulta.paciente
+        };
+      });
+      
+      setPacientesTransferidosEspecialidade(transferidosNormalizados);
+    } catch (error) {
+      setPacientesTransferidosEspecialidade([]);
+    }
+  }, []);
+
+  // Carregar pacientes transferidos quando o componente monta e a cada 30 segundos
+
   const openCreateModal = async () => {
-    console.log('🆕 Abrindo modal de criação de paciente...');
     setCurrentStep(0);
     setFormValues({});
     setIsModalVisible(true);
-    
-    // Log das configurações já carregadas no useEffect
-    console.log('📊 Estado atual das configurações:', {
-      racas: patientServiceRacas.length,
-      tiposUtentes: patientServiceTiposUtentes.length,
-      unidadesOrganicas: patientServiceUnidadesOrganicas.length,
-      tiposDocumentos: patientServiceTiposDocumentos.length,
-      provincias: patientServiceProvincias.length
-    });
-    
-    console.log('✅ Modal pronto para uso.');
   };
   const [searchText, setSearchText] = useState('');
 
@@ -2238,14 +2055,6 @@ const CadastroPaciente = () => {
   };
   
   // Função para abrir diagnóstico de erro 500
-  const abrirDiagnostico = async (paciente) => {
-    setPacienteDiagnostico(paciente);
-    message.loading('Executando diagnóstico...', 2);
-    
-    const resultado = await diagnosticarPaciente(paciente);
-    setDiagnosticoData(resultado);
-    setIsDiagnosticoModalVisible(true);
-  };
   
   // Função auxiliar para obter código do tipo de utente por ID
   const obterTipoUtenteCodigoPorId = (tipoUtenteId) => {
@@ -2272,47 +2081,7 @@ const CadastroPaciente = () => {
   };
 
   // Função para sincronizar paciente faltando com o backend
-  const sincronizarPacienteComBackend = async (paciente) => {
-    try {
-      message.loading(`Sincronizando paciente ${paciente.nome} com o backend...`, 3);
-      
-      // Preparar dados mínimos necessários para criar o paciente no backend
-      const dadosMinimos = {
-        nome: paciente.nome || 'Nome não informado',
-        apelido: paciente.apelido || paciente.nome || 'Apelido não informado',
-        data_nascimento: paciente.dataNascimento ? 
-          (typeof paciente.dataNascimento === 'string' ? paciente.dataNascimento : '1990-01-01') : 
-          '1990-01-01',
-        genero: paciente.genero || 'masculino',
-        celular: paciente.celular || '800000000',
-        tipo_utente_id: paciente.tipoUtenteId || 1,
-        bilhete_identidade: paciente.bilheteIdentidade || paciente.nid || `BI${paciente.id}`,
-        email: paciente.email || null,
-        status: 'ativo'
-      };
 
-      console.log('🔄 Dados para sincronização:', dadosMinimos);
-
-      // Criar paciente no backend
-      const resultado = await criarPaciente(dadosMinimos);
-      
-      if (resultado) {
-        message.success(`✅ Paciente ${paciente.nome} sincronizado com sucesso!`);
-        
-        // Atualizar o estado local com o paciente do backend
-        const updatedPacientes = pacientes.map(p => 
-          p.id === paciente.id ? { ...p, ...resultado, backendSynced: true } : p
-        );
-        setPacientes(updatedPacientes);
-        
-        return true;
-      }
-    } catch (error) {
-      console.error('❌ Erro na sincronização:', error);
-      message.error(`Erro ao sincronizar paciente: ${error.message}`);
-      return false;
-    }
-  };
 
   // Função para abrir o modal de pagamento da consulta regular
   const handlePagarConsultaRegular = async (paciente) => {
@@ -2520,38 +2289,7 @@ const CadastroPaciente = () => {
         url: `http://localhost:8002/api/pacientes/${paciente.id}/dados-pagamento`
       });
       
-      // Verificar se é erro 500 do servidor
-      if (error.message.includes('500')) {
-        message.error({
-          content: (
-            <div>
-              <div style={{ fontWeight: 'bold', color: '#ff4d4f' }}>🚨 Erro 500: Servidor Interno</div>
-              <div style={{ marginTop: 4, fontSize: '12px' }}>
-                O backend teve um problema ao processar o paciente ID {paciente.id}
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <Button 
-                  type="link" 
-                  size="small" 
-                  onClick={() => abrirDiagnostico(paciente)}
-                  style={{ padding: 0, height: 'auto', color: '#1890ff' }}
-                >
-                  🔧 Executar Diagnóstico Completo
-                </Button>
-              </div>
-            </div>
-          ),
-          duration: 15
-        });
-        console.error('🚨 ERRO 500: O servidor teve um problema interno. Possíveis causas:');
-        console.error('1. Paciente não encontrado no banco de dados');
-        console.error('2. Erro na consulta SQL');
-        console.error('3. Problema na configuração do backend');
-        console.error('4. Falta de dados relacionados (tipo_utente, etc.)');
-      } else {
-        message.error('Erro ao carregar informações de pagamento. Usando dados locais.');
-      }
-      
+
       // Fallback melhorado para a lógica anterior em caso de erro
       const pacienteComTipoUtente = { ...paciente };
       
@@ -3059,29 +2797,73 @@ const CadastroPaciente = () => {
     }
   };
 
-  // Função para aceitar solicitação de exame
+  // Função para aceitar/confirmar solicitação de exame
+  // Abre modal para confirmar disponibilidade e definir preços por exame
   const aceitarSolicitacaoExame = (exame) => {
-    const exameAtualizado = {
-      ...exame,
-      status: 'aceito',
-      dataAceitacao: new Date().toLocaleString(),
-      statusPagamento: 'pendente' // Aguardando pagamento
-    };
-
-    const updatedExames = examesPendentes.map(e =>
-      e.id === exame.id ? exameAtualizado : e
-    );
-    setExamesPendentes(updatedExames);
-
-    message.success(`Solicitação de exame aceita para ${exame.nome}! Aguardando pagamento.`);
+    // Cada linha da API é UM exame individual
+    const lista = [{
+      tipo_exame: exame.nome_exame || exame.examesSolicitados || exame.tipo_exame || '',
+      disponivel: true,
+      preco: '',
+    }];
+    setExamesParaConfirmar(lista);
+    setExameParaConfirmar(exame);
+    setIsConfirmarExamesModalVisible(true);
   };
 
-  // Função para rejeitar solicitação de exame
-  const rejeitarSolicitacaoExame = (exame) => {
-    const updatedExames = examesPendentes.filter(e => e.id !== exame.id);
-    setExamesPendentes(updatedExames);
+  // Atualiza um campo de um exame na lista de confirmar
+  const updateExameParaConfirmar = (idx, field, value) => {
+    setExamesParaConfirmar(prev =>
+      prev.map((e, i) => i === idx ? { ...e, [field]: value } : e)
+    );
+  };
 
-    message.warning(`Solicitação de exame rejeitada para ${exame.nome}.`);
+  // Envia confirmação com disponibilidade e preços — PUT /api/solicitacoes-exames/{id}/confirmar
+  const processarConfirmacaoExames = async () => {
+    const algumDisponivel = examesParaConfirmar.some(e => e.disponivel);
+    if (!algumDisponivel) {
+      message.warning('Seleccione pelo menos um exame disponível.');
+      return;
+    }
+    try {
+      const payload = {
+        exames_confirmados: examesParaConfirmar.map(e => ({
+          tipo_exame: e.tipo_exame,
+          disponivel: e.disponivel,
+          preco: e.disponivel ? (parseFloat(e.preco) || 0) : 0,
+        })),
+        observacoes: 'Confirmado pela receção',
+      };
+      await confirmarExames(exameParaConfirmar.id, payload, () => {
+        fetchSolicitacoes();
+        setIsConfirmarExamesModalVisible(false);
+        setExameParaConfirmar(null);
+        setExamesParaConfirmar([]);
+      });
+    } catch (err) {
+      console.error('❌ Erro ao confirmar exames:', err);
+    }
+  };
+
+  // Abre modal para rejeitar solicitação com motivo
+  const rejeitarSolicitacaoExame = (exame) => {
+    setExameParaRejeitar(exame);
+    rejeitarExameForm.resetFields();
+    setIsRejeitarExameModalVisible(true);
+  };
+
+  // Envia rejeição — POST /api/solicitacoes-exames/{id}/rejeitar
+  const processarRejeicaoExame = async (values) => {
+    try {
+      await rejeitarSolicitacao(exameParaRejeitar.id, values.motivo, () => {
+        fetchSolicitacoes();
+        setIsRejeitarExameModalVisible(false);
+        setExameParaRejeitar(null);
+        rejeitarExameForm.resetFields();
+      });
+    } catch (err) {
+      console.error('❌ Erro ao rejeitar exame:', err);
+    }
   };
 
   // Função para abrir modal de pagamento de exame
@@ -3092,26 +2874,24 @@ const CadastroPaciente = () => {
   };
 
   // Função para processar pagamento de exame
-  const processarPagamentoExame = (values) => {
-    const exameAtualizado = {
-      ...examePagamento,
-      statusPagamento: 'pago',
-      dataPagamento: new Date().toLocaleString(),
-      valorExame: values.valor,
-      metodoPagamentoExame: values.metodoPagamento,
-      status: 'pago' // Status pago, aguardando marcação dos exames
-    };
+  const processarPagamentoExame = async (values) => {
+    try {
+      const payload = {
+        valor_pago: parseFloat(values.valor),
+        metodo_pagamento: values.metodoPagamento,
+        referencia_pagamento: values.referencia || 'N/A',
+        observacoes: values.observacoes || 'Pagamento processado'
+      };
 
-    const updatedExames = examesPendentes.map(e =>
-      e.id === examePagamento.id ? exameAtualizado : e
-    );
-    setExamesPendentes(updatedExames);
-
-    message.success(`Pagamento de MT ${values.valor} processado via ${values.metodoPagamento}! Agora você pode marcar os exames realizáveis.`);
-
-    setIsPagamentoExameModalVisible(false);
-    setExamePagamento(null);
-    pagamentoExameForm.resetFields();
+      await processarPagamento(examePagamento.id, payload, () => {
+        fetchSolicitacoes(); // Recarregar lista
+        setIsPagamentoExameModalVisible(false);
+        setExamePagamento(null);
+        pagamentoExameForm.resetFields();
+      });
+    } catch (error) {
+      console.error('❌ Erro ao processar pagamento:', error);
+    }
   };
 
   // Função para abrir modal de marcar exames
@@ -3132,119 +2912,161 @@ const CadastroPaciente = () => {
     marcarExamesForm.resetFields();
   };
 
-  // Função para processar a marcação de exames e enviar para laboratório
-  const processarMarcacaoExames = () => {
+  // Função para processar a marcação de exames e agendar colheita
+  const processarMarcacaoExames = async () => {
     if (examesSelecionados.length === 0) {
       message.warning('Por favor, selecione pelo menos um exame para realizar.');
       return;
     }
 
-    const exameAtualizado = {
-      ...exameParaMarcar,
-      examesSelecionados: examesSelecionados, // Exames que serão realizados
-      examesNaoRealizaveis: [], // Exames que não podem ser realizados (diferença)
-      status: 'pago_laboratorio', // Pronto para ir ao laboratório
-      dataAprovacaoExames: new Date().toLocaleString(),
-      aguardandoExames: true // CORREÇÃO: Adicionar flag explícito para marcar aguardando exames
-    };
-    
-    // CORREÇÃO: Garantir que o paciente associado ao exame permanece em estado de consulta
-    // Isso garante que o paciente não seja removido do ciclo até que os exames sejam concluídos
-    const pacienteId = exameParaMarcar.pacienteId;
-    if (pacienteId) {
-      // Verificar se existe nas consultas pendentes
-      setConsultasPendentes(prev => 
-        prev.map(p => {
-          if (p.id === pacienteId || p.pacienteId === pacienteId) {
-            return {
-              ...p,
-              aguardandoExames: true,
-              statusExames: 'em_andamento',
-              dataAprovacaoExames: new Date().toLocaleString()
-            };
-          }
-          return p;
-        })
-      );
-    }
+    try {
+      // Calcular exames não realizáveis
+      let todosExames = [];
+      if (typeof exameParaMarcar.examesSolicitados === 'string') {
+        todosExames = exameParaMarcar.examesSolicitados.split(',').map(e => e.trim());
+      } else if (Array.isArray(exameParaMarcar.examesSolicitados)) {
+        todosExames = exameParaMarcar.examesSolicitados;
+      }
 
-    // Calcular exames não realizáveis
-    let todosExames = [];
-    if (typeof exameParaMarcar.examesSolicitados === 'string') {
-      todosExames = exameParaMarcar.examesSolicitados.split(',').map(e => e.trim());
-    } else if (Array.isArray(exameParaMarcar.examesSolicitados)) {
-      todosExames = exameParaMarcar.examesSolicitados;
-    }
+      const examesNaoRealizaveis = todosExames.filter(exame => !examesSelecionados.includes(exame));
 
-    const examesNaoRealizaveis = todosExames.filter(exame => !examesSelecionados.includes(exame));
-    exameAtualizado.examesNaoRealizaveis = examesNaoRealizaveis;
+      // Agendar colheita para amanhã às 9h por padrão
+      const amanha = new Date();
+      amanha.setDate(amanha.getDate() + 1);
+      
+      const payload = {
+        data_colheita: amanha.toISOString().split('T')[0],
+        hora_colheita: '09:00',
+        observacoes: `Exames agendados: ${examesSelecionados.join(', ')}${examesNaoRealizaveis.length > 0 ? `. Não realizáveis: ${examesNaoRealizaveis.join(', ')}` : ''}`,
+        tecnico_id: 1 // ID padrão - ajustar conforme necessário
+      };
 
-    const updatedExames = examesPendentes.map(e =>
-      e.id === exameParaMarcar.id ? exameAtualizado : e
-    );
-    setExamesPendentes(updatedExames);
+      await agendarColheita(exameParaMarcar.id, payload, () => {
+        fetchSolicitacoes(); // Recarregar lista
+        
+        // Mensagem de sucesso detalhada
+        let mensagem = `${examesSelecionados.length} exame(s) agendado(s) para colheita!`;
+        if (examesNaoRealizaveis.length > 0) {
+          mensagem += ` ${examesNaoRealizaveis.length} exame(s) não realizável(is) na clínica.`;
+        }
 
-    // Mensagem de sucesso detalhada
-    let mensagem = `${examesSelecionados.length} exame(s) aprovado(s) e liberado(s) para o laboratório!`;
-    if (examesNaoRealizaveis.length > 0) {
-      mensagem += `\n${examesNaoRealizaveis.length} exame(s) não realizável(is) na clínica.`;
-    }
-
-    message.success({
-      content: (
-        <div>
-          <div>{mensagem}</div>
-          <div style={{ fontSize: '12px', marginTop: '5px' }}>
-            <b>Aprovados:</b> {examesSelecionados.join(', ')}
-          </div>
-          {examesNaoRealizaveis.length > 0 && (
-            <div style={{ fontSize: '12px', color: '#ff9500' }}>
-              <b>Não realizáveis:</b> {examesNaoRealizaveis.join(', ')}
+        message.success({
+          content: (
+            <div>
+              <div>{mensagem}</div>
+              <div style={{ fontSize: '12px', marginTop: '5px' }}>
+                <b>Agendados:</b> {examesSelecionados.join(', ')}
+              </div>
+              {examesNaoRealizaveis.length > 0 && (
+                <div style={{ fontSize: '12px', color: '#ff9500' }}>
+                  <b>Não realizáveis:</b> {examesNaoRealizaveis.join(', ')}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ),
-      duration: 6
-    });
+          ),
+          duration: 6
+        });
 
-    setIsMarcarExamesModalVisible(false);
-    setExameParaMarcar(null);
-    setExamesSelecionados([]);
+        setIsMarcarExamesModalVisible(false);
+        setExameParaMarcar(null);
+        setExamesSelecionados([]);
+      });
+    } catch (error) {
+      console.error('❌ Erro ao agendar colheita:', error);
+    }
   };
 
   // Função para processar o pagamento após confirmação no modal
-  const processarPagamentoEspecialidade = (values) => {
-    // Verificar se pode realizar nova consulta
-    const verificacao = podeRealizarNovaConsulta(pacientePagamento);
-    if (!verificacao.pode) {
-      message.warning(verificacao.motivo);
-      return;
+  const processarPagamentoEspecialidade = async (values) => {
+    try {
+      // Verificar se pode realizar nova consulta
+      const verificacao = podeRealizarNovaConsulta(pacientePagamento);
+      if (!verificacao.pode) {
+        message.warning(verificacao.motivo);
+        return;
+      }
+
+      const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+      if (!token) {
+        message.error('Token de autenticação não encontrado');
+        return;
+      }
+
+      console.log('💳 Processando pagamento de especialidade:', {
+        paciente: pacientePagamento.nome,
+        nid: pacientePagamento.nid,
+        especialidade: pacientePagamento.especialidade,
+        valores: values
+      });
+
+      // Payload conforme documentação - POST /api/pacientes/pagamento-especialidade (Patient Service - 8002)
+      const payload = {
+        paciente_id: pacientePagamento.paciente_id,
+        consulta_id: pacientePagamento.consulta_id,
+        agendamento_id: pacientePagamento.agendamento_id,
+        nid: pacientePagamento.nid,
+        especialidade_destino: pacientePagamento.especialidade_destino || pacientePagamento.especialidade,
+        medico_destino_id: pacientePagamento.medico_id,
+        valor_consulta: parseFloat(values.valor),
+        metodo_pagamento_id: parseInt(values.metodoPagamento),
+        observacoes: values.observacoes || null
+      };
+
+      console.log('📦 Payload completo para pagamento especialidade:', JSON.stringify(payload, null, 2));
+
+      const response = await axios.post(
+        'http://127.0.0.1:8002/api/services/pagamento-especialidade',
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log('✅ Resposta do pagamento:', response.data);
+
+      message.success({
+        content: `Pagamento de MT ${values.valor} processado com sucesso! Agendamento criado para ${pacientePagamento.especialidade}.`,
+        duration: 5
+      });
+
+      setIsPagamentoModalVisible(false);
+
+      // Atualizar lista de transferidos com múltiplas tentativas
+      // (para garantir que o backend processou a atualização do status_pagamento)
+      await carregarPacientesTransferidosEspecialidade();
+      
+      // Segunda atualização após 1 segundo
+      setTimeout(async () => {
+        console.log('🔄 Segunda atualização da lista de transferidos...');
+        await carregarPacientesTransferidosEspecialidade();
+      }, 1000);
+      
+      // Terceira atualização após 2 segundos (para garantir)
+      setTimeout(async () => {
+        console.log('🔄 Terceira atualização da lista de transferidos...');
+        await carregarPacientesTransferidosEspecialidade();
+      }, 2000);
+      setPacientePagamento(null);
+      pagamentoForm.resetFields();
+
+    } catch (error) {
+      console.error('❌ Erro ao processar pagamento de especialidade:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+
+      const errorMsg = error.response?.data?.message || 
+                       error.response?.data?.error ||
+                       error.message || 
+                       'Erro ao processar pagamento';
+      
+      message.error(`Erro no pagamento: ${errorMsg}`);
     }
-
-    const pacienteAtualizado = {
-      ...pacientePagamento,
-      statusPagamento: 'pago',
-      dataPagamento: new Date().toLocaleString(),
-      estadoAtual: 'aguardando_consulta',
-      valorConsulta: values.valor,
-      metodoPagamento: values.metodoPagamento
-    };
-
-    // Atualizar o paciente na lista de transferidos para especialidades (não remover)
-    setPacientesTransferidosEspecialidade(
-      pacientesTransferidosEspecialidade.map(p =>
-        p.id === pacientePagamento.id ? pacienteAtualizado : p
-      )
-    );
-
-    // Também adicionar à lista de consultas pendentes para que apareça no consultório
-    setConsultasPendentes([...consultasPendentes, pacienteAtualizado]);
-
-    message.success(`Pagamento de MT ${values.valor} processado via ${values.metodoPagamento}! Paciente permanece na lista com status "Pago" e foi encaminhado para consulta de ${pacientePagamento.especialidade}.`);
-
-    setIsPagamentoModalVisible(false);
-    setPacientePagamento(null);
-    pagamentoForm.resetFields();
   };
 
   const handleEdit = async (values) => {
@@ -3960,15 +3782,6 @@ const CadastroPaciente = () => {
               >
                 Pagar
               </Button>
-              <Button 
-                type="default" 
-                size="small"
-                onClick={() => abrirDiagnostico(record)}
-                style={{ marginLeft: 4, fontSize: '10px' }}
-                title="Diagnosticar problemas de conectividade"
-              >
-                🔧 Diagnóstico
-              </Button>
               
               {/* Botão de consulta de acompanhamento se disponível */}
               {record.temAcompanhamentoDisponivel && (
@@ -4466,8 +4279,8 @@ const CadastroPaciente = () => {
       dataPagamento: utenteAtualizado.dataPagamento
     };
 
-    // Adicionar aos exames pendentes do laboratório
-    setExamesPendentes([...examesPendentes, exameLaboratorio]);
+    // TODO: Refatorar para usar API de solicitações de exames
+    // setExamesPendentes([...examesPendentes, exameLaboratorio]);
 
     message.success({
       content: `Pagamento de MT ${values.valor} processado via ${values.metodoPagamento}! Exames transferidos para o laboratório.`,
@@ -4802,8 +4615,8 @@ const CadastroPaciente = () => {
     },
     {
       title: 'Status Pagamento',
-      dataIndex: 'statusPagamento',
-      key: 'statusPagamento',
+      dataIndex: 'status_pagamento',
+      key: 'status_pagamento',
       render: (status) => {
         const color = status === 'pago' ? 'green' : 'orange';
         const text = status === 'pago' ? 'Pago' : 'Pendente';
@@ -4812,11 +4625,11 @@ const CadastroPaciente = () => {
     },
     {
       title: 'Data Pagamento',
-      dataIndex: 'dataPagamento',
-      key: 'dataPagamento',
+      dataIndex: 'data_pagamento',
+      key: 'data_pagamento',
       render: (data, record) => {
-        if (record.statusPagamento === 'pago' && data) {
-          return <span style={{ color: 'green', fontSize: '12px' }}>{data}</span>;
+        if (record.status_pagamento === 'pago' && data) {
+          return <span style={{ color: 'green', fontSize: '12px' }}>{new Date(data).toLocaleString('pt-BR')}</span>;
         }
         return <span style={{ color: '#999', fontSize: '12px' }}>-</span>;
       }
@@ -4841,7 +4654,7 @@ const CadastroPaciente = () => {
           >
 
           </Button>
-          {record.statusPagamento !== 'pago' && (
+          {record.status_pagamento !== 'pago' && (
             <Button
               type="primary"
               size="small"
@@ -4857,47 +4670,117 @@ const CadastroPaciente = () => {
   ];
 
   // Colunas para solicitações de exames
+  // Helpers de extracção baseados na estrutura REAL da API:
+  // { id, paciente_nid, paciente_nome, medico_nome, nome_exame, data_solicitacao, status }
+
+  const extrairNomePaciente = (record) =>
+    record.paciente_nome ||
+    record.nome_paciente ||
+    record.nome ||
+    (record.paciente_primeiro_nome
+      ? `${record.paciente_primeiro_nome} ${record.paciente_ultimo_nome || ''}`.trim()
+      : '') ||
+    record.paciente?.nome ||
+    '';
+
+  const extrairMedico = (record) =>
+    record.medico_nome ||
+    record.medico_solicitante ||
+    record.solicitado_por ||
+    record.nome_medico ||
+    record.medico?.nome ||
+    '';
+
+  // Cada linha da API é UM exame — nome_exame é campo directo
+  const extrairExames = (record) =>
+    record.nome_exame ||
+    record.examesSolicitados ||
+    record.tipo_exame ||
+    record.descricao ||
+    '';
+
   const solicitacoesExamesColumns = [
-    { title: 'NID', dataIndex: 'nid', key: 'nid' },
-    { title: 'Nome', dataIndex: 'nome', key: 'nome' },
-    { title: 'Apelido', dataIndex: 'apelido', key: 'apelido' },
+    {
+      title: 'NID',
+      key: 'nid',
+      width: 120,
+      render: (_, record) => {
+        const val = record.paciente_nid || record.nid || record.paciente?.nid;
+        return val || <span style={{ color: '#ccc' }}>N/A</span>;
+      }
+    },
+    {
+      title: 'Nome do Paciente',
+      key: 'nome',
+      render: (_, record) => {
+        const val = extrairNomePaciente(record);
+        return val || <span style={{ color: '#ccc' }}>N/A</span>;
+      }
+    },
+    {
+      title: 'Médico Solicitante',
+      key: 'medico_solicitante',
+      render: (_, record) => {
+        const val = extrairMedico(record);
+        return val || <span style={{ color: '#ccc' }}>N/A</span>;
+      }
+    },
     {
       title: 'Exames Solicitados',
-      dataIndex: 'examesSolicitados',
       key: 'examesSolicitados',
-      render: (text) => (
-        <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
-          {Array.isArray(text) ? text.join(', ') : text}
-        </span>
-      )
+      render: (_, record) => {
+        const texto = extrairExames(record);
+        if (!texto) return <span style={{ color: '#ccc' }}>N/A</span>;
+        return (
+          <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
+            {texto}
+          </span>
+        );
+      }
     },
     {
       title: 'Data da Solicitação',
-      dataIndex: 'dataSolicitacao',
       key: 'dataSolicitacao',
-      render: (data) => data ? new Date(data).toLocaleDateString('pt-BR') : 'N/A'
+      render: (_, record) => {
+        const data = record.dataSolicitacao || record.data_solicitacao || record.created_at;
+        return data ? new Date(data).toLocaleDateString('pt-BR') : 'N/A';
+      }
     },
     {
       title: 'Status',
-      dataIndex: 'status',
       key: 'status',
-      render: (status) => {
+      render: (_, record) => {
+        const status = record.status;
         const statusConfig = {
-          'pendente': { color: '#ff9500', text: 'Pendente Aprovação' },
-          'aceito': { color: '#1890ff', text: 'Aceito - Aguardando Pagamento' },
-          'pago': { color: '#52c41a', text: 'Pago - Marcar Exames' },
-          'pago_laboratorio': { color: '#28a745', text: 'Liberado para Laboratório' }
+          // Status real devolvido pela API
+          'solicitado':       { color: '#ff9500', text: 'Pendente Aprovação' },
+          // Valores canónicos (após normalização)
+          'pending':          { color: '#ff9500', text: 'Pendente Aprovação' },
+          'confirmada':       { color: '#1890ff', text: 'Confirmada - Aguard. Pagamento' },
+          'paga':             { color: '#52c41a', text: 'Paga - Agendar Colheita' },
+          'agendada':         { color: '#722ed1', text: 'Colheita Agendada' },
+          'concluida':        { color: '#28a745', text: 'Concluída' },
+          'cancelada':        { color: '#ff4d4f', text: 'Cancelada' },
+          // Aliases
+          'pendente':         { color: '#ff9500', text: 'Pendente Aprovação' },
+          'confirmado':       { color: '#1890ff', text: 'Confirmado - Aguard. Pagamento' },
+          'aceito':           { color: '#1890ff', text: 'Aceito - Aguard. Pagamento' },
+          'pago':             { color: '#52c41a', text: 'Pago - Agendar Colheita' },
+          'pago_laboratorio': { color: '#28a745', text: 'Liberado para Laboratório' },
+          'concluido':        { color: '#28a745', text: 'Concluída' },
+          'cancelado':        { color: '#ff4d4f', text: 'Cancelada' },
+          'rejeitado':        { color: '#ff4d4f', text: 'Rejeitada' },
         };
-        const config = statusConfig[status] || { color: '#999', text: status };
+        const config = statusConfig[status] || { color: '#999', text: status || 'Desconhecido' };
         return <span style={{ color: config.color, fontWeight: 'bold' }}>{config.text}</span>;
       }
     },
     {
       title: 'Status Pagamento',
-      dataIndex: 'statusPagamento',
       key: 'statusPagamento',
-      render: (status, record) => {
-        if (record.status === 'pendente') {
+      render: (_, record) => {
+        const status = record.statusPagamento || record.status_pagamento || 'pendente';
+        if (record.status === 'pending' || record.status === 'pendente') {
           return <span style={{ color: '#999', fontSize: '12px' }}>-</span>;
         }
         const color = status === 'pago' ? 'green' : 'orange';
@@ -4908,10 +4791,17 @@ const CadastroPaciente = () => {
     {
       title: 'Ações',
       key: 'acoes',
-      render: (_, record) => (
-        <Space>
-          {record.status === 'pendente' ? (
-            <>
+      width: 200,
+      render: (_, record) => {
+        const s = record.status;
+        // Log apenas em dev para diagnosticar valores reais
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔍 [Ações] id=${record.id} status="${s}" statusPagamento="${record.statusPagamento}"`);
+        }
+        // pending / solicitado → Aceitar / Rejeitar
+        if (s === 'pending' || s === 'solicitado' || s === 'pendente') {
+          return (
+            <Space>
               <Button
                 type="primary"
                 size="small"
@@ -4927,30 +4817,68 @@ const CadastroPaciente = () => {
               >
                 Rejeitar
               </Button>
-            </>
-          ) : record.status === 'aceito' && record.statusPagamento !== 'pago' ? (
+            </Space>
+          );
+        }
+        // confirmada → Pagar Exame (se ainda não foi pago)
+        if (s === 'confirmada' && record.statusPagamento !== 'pago') {
+          return (
+            <Space>
+              <Button
+                type="default"
+                size="small"
+                onClick={() => handlePagarExame(record)}
+                style={{ background: '#ff9500', color: 'white', borderColor: '#ff9500' }}
+              >
+                Pagar Exame
+              </Button>
+            </Space>
+          );
+        }
+        // paga → Agendar Colheita
+        if (s === 'paga') {
+          return (
+            <Space>
+              <Button
+                type="default"
+                size="small"
+                onClick={() => handleMarcarExames(record)}
+                style={{ background: '#1890ff', color: 'white', borderColor: '#1890ff' }}
+              >
+                Agendar Colheita
+              </Button>
+            </Space>
+          );
+        }
+        // agendada / concluida / pago_laboratorio → processado
+        if (s === 'agendada' || s === 'concluida' || s === 'pago_laboratorio') {
+          return <span style={{ color: '#52c41a', fontSize: '13px', fontWeight: 'bold' }}>✓ Processado</span>;
+        }
+        // cancelada / rejeitada
+        if (s === 'cancelada') {
+          return <span style={{ color: '#ff4d4f', fontSize: '13px' }}>✗ Cancelada</span>;
+        }
+        // fallback: status desconhecido — mostra botões de pending por defeito
+        return (
+          <Space>
             <Button
-              type="default"
+              type="primary"
               size="small"
-              onClick={() => handlePagarExame(record)}
-              style={{ background: '#ff9500', color: 'white', borderColor: '#ff9500' }}
+              onClick={() => aceitarSolicitacaoExame(record)}
+              style={{ background: '#52c41a', borderColor: '#52c41a' }}
             >
-              Pagar Exame
+              Aceitar
             </Button>
-          ) : record.status === 'pago' && record.statusPagamento === 'pago' ? (
             <Button
-              type="default"
+              danger
               size="small"
-              onClick={() => handleMarcarExames(record)}
-              style={{ background: '#1890ff', color: 'white', borderColor: '#1890ff' }}
+              onClick={() => rejeitarSolicitacaoExame(record)}
             >
-              Marcar Exames
+              Rejeitar
             </Button>
-          ) : (
-            <span style={{ color: '#52c41a', fontSize: '12px' }}>✓ Processado</span>
-          )}
-        </Space>
-      )
+          </Space>
+        );
+      }
     }
   ];
 
@@ -4980,12 +4908,14 @@ const CadastroPaciente = () => {
   // Filtro para Solicitações de Exames
   const filteredSolicitacoesExames = examesPendentes
     .filter(exame =>
+      !searchText ||
       (exame.nome && exame.nome.toLowerCase().includes(searchText.toLowerCase())) ||
       (exame.apelido && exame.apelido.toLowerCase().includes(searchText.toLowerCase())) ||
-      (exame.nid && exame.nid.includes(searchText)) ||
-      (exame.examesSolicitados && exame.examesSolicitados.toLowerCase().includes(searchText.toLowerCase()))
+      (exame.nid && String(exame.nid).toLowerCase().includes(searchText.toLowerCase())) ||
+      (exame.examesSolicitados && String(exame.examesSolicitados).toLowerCase().includes(searchText.toLowerCase())) ||
+      (exame.medico_solicitante && exame.medico_solicitante.toLowerCase().includes(searchText.toLowerCase()))
     )
-    .sort((a, b) => new Date(b.dataSolicitacao) - new Date(a.dataSolicitacao));
+    .sort((a, b) => new Date(b.dataSolicitacao || b.data_solicitacao) - new Date(a.dataSolicitacao || a.data_solicitacao));
 
   // Renderizar o formulário de Utente Autônomo
   const renderUtenteAutonomoForm = () => {
@@ -6952,37 +6882,37 @@ const CadastroPaciente = () => {
     }
 
     // Lista de províncias de Moçambique
-    const provincias = [
-      'Maputo Cidade', 'Maputo Província', 'Gaza', 'Inhambane', 'Sofala', 'Manica',
-      'Tete', 'Zambézia', 'Nampula', 'Cabo Delgado', 'Niassa'
-    ];
+    // const provincias = [
+    //   'Maputo Cidade', 'Maputo Província', 'Gaza', 'Inhambane', 'Sofala', 'Manica',
+    //   'Tete', 'Zambézia', 'Nampula', 'Cabo Delgado', 'Niassa'
+    // ];
 
-    // Passos do formulário principal: separados em steps lógicos
-    // Mapas de distritos e bairros por província para cascade
-    const distritosPorProvincia = {
-      'Maputo Cidade': [
-        'KaMpfumu', 'Nlhamankulu', 'KaMaxakeni', 'KaMavota', 'KaMubukwana', 'KaTembe', 'KaNyaka'
-      ],
-      'Maputo Província': [
-        'Matola', 'Boane', 'Marracuene', 'Manhiça', 'Magude', 'Moamba', 'Namaacha', 'Matutuíne'
-      ],
-      'Gaza': [
-        'Xai-Xai', 'Bilene', 'Chibuto', 'Chicualacuala', 'Chigubo', 'Chókwè', 'Guijá', 'Limpopo', 'Mabalane', 'Manjacaze', 'Massagena', 'Massingir', 'Xai-Xai'
-      ]
-    };
+    // // Passos do formulário principal: separados em steps lógicos
+    // // Mapas de distritos e bairros por província para cascade
+    // const distritosPorProvincia = {
+    //   'Maputo Cidade': [
+    //     'KaMpfumu', 'Nlhamankulu', 'KaMaxakeni', 'KaMavota', 'KaMubukwana', 'KaTembe', 'KaNyaka'
+    //   ],
+    //   'Maputo Província': [
+    //     'Matola', 'Boane', 'Marracuene', 'Manhiça', 'Magude', 'Moamba', 'Namaacha', 'Matutuíne'
+    //   ],
+    //   'Gaza': [
+    //     'Xai-Xai', 'Bilene', 'Chibuto', 'Chicualacuala', 'Chigubo', 'Chókwè', 'Guijá', 'Limpopo', 'Mabalane', 'Manjacaze', 'Massagena', 'Massingir', 'Xai-Xai'
+    //   ]
+    // };
 
-    const bairrosPorProvincia = {
-      'Maputo Cidade': [
-        'Central', 'Polana Cimento A', 'Polana Cimento B', 'Sommerschield', 'Malhangalene', 'Alto Maé', 'Bairro Central', 'Museu', 'Chamanculo', 'Xipamanine', 'Maxaquene', 'Mafalala', 'Costa do Sol', 'Zimpeto', 'Magoanine', 'Hulene', 'Laulane', 'Bairro Ferroviário', 'Bairro Militar', 'Bairro Aeroporto', 'Bairro 25 de Junho', 'Bairro Urbanização', 'Bairro Triunfo', 'Bairro Coop', 'Bairro Jardim', 'Bairro Benfica', 'Bairro Malhazine', 'Bairro Mavalane', 'Bairro Chamanculo', 'Bairro Hulene', 'Bairro Xiquelene'
-      ],
-      'Matola': [
-        'Matola A', 'Matola B', 'Matola C', 'Matola D', 'Matola E', 'Matola F', 'Matola G', 'Matola H', 'Matola J', 'Matola K', 'Matola L', 'Matola M', 'Matola N', 'Matola O', 'Matola P', 'Matola Q', 'Matola R', 'Matola S', 'Matola T'
-      ],
-      'Beira': [
-        'Ponta-Gêa', 'Macuti', 'Munhava', 'Estoril', 'Chaimite', 'Maraza', 'Chamba', 'Inhamízua', 'Nhaconjo', 'Matacuane', 'Mascarenhas', 'Munhava Central', 'Munhava Matope'
-      ],
-      // Adicione outros bairros para outras cidades/distritos conforme necessário
-    };
+    // const bairrosPorProvincia = {
+    //   'Maputo Cidade': [
+    //     'Central', 'Polana Cimento A', 'Polana Cimento B', 'Sommerschield', 'Malhangalene', 'Alto Maé', 'Bairro Central', 'Museu', 'Chamanculo', 'Xipamanine', 'Maxaquene', 'Mafalala', 'Costa do Sol', 'Zimpeto', 'Magoanine', 'Hulene', 'Laulane', 'Bairro Ferroviário', 'Bairro Militar', 'Bairro Aeroporto', 'Bairro 25 de Junho', 'Bairro Urbanização', 'Bairro Triunfo', 'Bairro Coop', 'Bairro Jardim', 'Bairro Benfica', 'Bairro Malhazine', 'Bairro Mavalane', 'Bairro Chamanculo', 'Bairro Hulene', 'Bairro Xiquelene'
+    //   ],
+    //   'Matola': [
+    //     'Matola A', 'Matola B', 'Matola C', 'Matola D', 'Matola E', 'Matola F', 'Matola G', 'Matola H', 'Matola J', 'Matola K', 'Matola L', 'Matola M', 'Matola N', 'Matola O', 'Matola P', 'Matola Q', 'Matola R', 'Matola S', 'Matola T'
+    //   ],
+    //   'Beira': [
+    //     'Ponta-Gêa', 'Macuti', 'Munhava', 'Estoril', 'Chaimite', 'Maraza', 'Chamba', 'Inhamízua', 'Nhaconjo', 'Matacuane', 'Mascarenhas', 'Munhava Central', 'Munhava Matope'
+    //   ],
+    //   // Adicione outros bairros para outras cidades/distritos conforme necessário
+    // };
 
     // Helper para pegar distritos e bairros da província selecionada - REMOVIDO: não utilizado
     // const distritosOptions = distritosPorProvincia[selectedProvincia] || [];
@@ -7814,7 +7744,19 @@ const CadastroPaciente = () => {
             <div style={{ flex: 1 }}>
               <Tabs
                 activeKey={activeTab}
-                onChange={setActiveTab}
+                onChange={(key) => {
+                  setActiveTab(key);
+                  // Atualizar lista quando mudar para tab "Para Especialidades"
+                  if (key === '3') {
+                    console.log('📋 Tab "Para Especialidades" selecionada - atualizando lista...');
+                    carregarPacientesTransferidosEspecialidade();
+                  }
+                  // Atualizar lista quando mudar para tab "Solicitações de Exames"
+                  if (key === '4') {
+                    console.log('🧪 Tab "Solicitações de Exames" selecionada - atualizando lista...');
+                    fetchSolicitacoes();
+                  }
+                }}
                 type="card"
                 style={{ marginBottom: 0 }}
                 items={[
@@ -7910,27 +7852,53 @@ const CadastroPaciente = () => {
               rowClassName={(_, idx) => (idx % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark')}
             />
           ) : (
-            <Table
-              columns={solicitacoesExamesColumns}
-              dataSource={filteredSolicitacoesExames}
-              rowKey="id"
-              pagination={{
-                pageSize: 3,
-                showSizeChanger: false,
-                style: { marginTop: 5 },
-              }}
-              bordered
-              style={{ borderRadius: 10, overflow: 'hidden' }}
-              rowClassName={(record) => {
-                const statusColors = {
-                  'pendente': 'ant-table-row-warning',
-                  'aceito': 'ant-table-row-info',
-                  'pago': 'ant-table-row-success',
-                  'pago_laboratorio': 'ant-table-row-success'
-                };
-                return statusColors[record.status] || (filteredSolicitacoesExames.indexOf(record) % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark');
-              }}
-            />
+            <>
+              {/* Painel de debug — mostra estrutura real do 1º item da API */}
+              {process.env.NODE_ENV === 'development' && examesPendentes.length > 0 && (() => {
+                const raw = examesPendentes[0];
+                const campos = Object.keys(raw);
+                return (
+                  <div style={{
+                    background: '#fffbe6', border: '1px solid #ffe58f',
+                    borderRadius: 6, padding: '8px 12px', marginBottom: 8,
+                    fontSize: 11, fontFamily: 'monospace'
+                  }}>
+                    <strong style={{ color: '#d48806' }}>🔍 DEBUG — Campos do 1º item da API:</strong>
+                    <div style={{ marginTop: 4, color: '#595959' }}>
+                      {campos.map(k => (
+                        <span key={k} style={{ marginRight: 8, background: '#fff', padding: '1px 4px', borderRadius: 3, border: '1px solid #e8e8e8' }}>
+                          <b>{k}</b>: {JSON.stringify(raw[k])?.slice(0, 60)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <Table
+                columns={solicitacoesExamesColumns}
+                dataSource={filteredSolicitacoesExames}
+                rowKey="id"
+                loading={loadingExamesPendentes}
+                pagination={{
+                  pageSize: 3,
+                  showSizeChanger: false,
+                  style: { marginTop: 5 },
+                }}
+                bordered
+                style={{ borderRadius: 10, overflow: 'hidden' }}
+                locale={{ emptyText: 'Nenhuma solicitação de exame pendente' }}
+                rowClassName={(record) => {
+                  const statusColors = {
+                    'pendente': 'ant-table-row-warning',
+                    'aceito': 'ant-table-row-info',
+                    'pago': 'ant-table-row-success',
+                    'pago_laboratorio': 'ant-table-row-success'
+                  };
+                  return statusColors[record.status] || (filteredSolicitacoesExames.indexOf(record) % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark');
+                }}
+              />
+            </>
           )}
 
           <Modal
@@ -8170,12 +8138,11 @@ const CadastroPaciente = () => {
                 rules={[{ required: true, message: 'Por favor, selecione o método de pagamento' }]}
               >
                 <Select placeholder="Selecione o método de pagamento">
-                  <Option value="dinheiro">Dinheiro</Option>
-                  <Option value="mpesa">M-Pesa</Option>
-                  <Option value="emola">E-mola</Option>
-                  <Option value="cartao">Cartão de Crédito/Débito</Option>
-                  <Option value="transferencia">Transferência Bancária</Option>
-                  <Option value="cheque">Cheque</Option>
+                  {metodosPagamento.map(metodo => (
+                    <Option key={metodo.id} value={metodo.id}>
+                      {metodo.nome}
+                    </Option>
+                  ))}
                 </Select>
               </Form.Item>
 
@@ -9103,6 +9070,139 @@ const CadastroPaciente = () => {
             </Form>
           </Modal>
 
+          {/* Modal de Confirmar Disponibilidade e Preços dos Exames */}
+          <Modal
+            title={<span style={{ color: '#2d3a4a', fontWeight: 'bold' }}>✅ Confirmar Disponibilidade e Preços</span>}
+            open={isConfirmarExamesModalVisible}
+            onCancel={() => {
+              setIsConfirmarExamesModalVisible(false);
+              setExameParaConfirmar(null);
+              setExamesParaConfirmar([]);
+            }}
+            footer={null}
+            width={680}
+            style={{ top: 40 }}
+            bodyStyle={{ background: '#f7f9fa', borderRadius: 10 }}
+          >
+            {/* Info do paciente */}
+            <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 8, padding: 14, marginBottom: 20 }}>
+              <div style={{ fontWeight: 'bold', color: '#1890ff', fontSize: 15, marginBottom: 4 }}>
+                <UserOutlined style={{ marginRight: 6 }} />
+                {exameParaConfirmar?.nome}
+              </div>
+              <div style={{ color: '#555', fontSize: 13 }}>
+                <strong>NID:</strong> {exameParaConfirmar?.nid} &nbsp;|&nbsp;
+                <strong>Médico:</strong> {exameParaConfirmar?.medico_solicitante || 'N/A'}
+              </div>
+            </div>
+
+            {/* Lista de exames com toggle e preço */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: 12 }}>Exames Solicitados:</div>
+              {examesParaConfirmar.map((exame, idx) => (
+                <div key={idx} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  background: '#fff', border: '1px solid #e5e7eb',
+                  borderRadius: 6, padding: '10px 14px', marginBottom: 8
+                }}>
+                  <Switch
+                    checked={exame.disponivel}
+                    onChange={v => updateExameParaConfirmar(idx, 'disponivel', v)}
+                    checkedChildren="Disponível"
+                    unCheckedChildren="Indisponível"
+                    style={{ minWidth: 110 }}
+                  />
+                  <span style={{ flex: 1, fontWeight: 500, color: exame.disponivel ? '#111' : '#9ca3af' }}>
+                    {exame.tipo_exame}
+                  </span>
+                  {exame.disponivel && (
+                    <InputNumber
+                      min={0}
+                      step={50}
+                      value={exame.preco}
+                      onChange={v => updateExameParaConfirmar(idx, 'preco', v)}
+                      placeholder="Preço (MT)"
+                      prefix="MT"
+                      style={{ width: 140 }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <Space>
+                <Button onClick={() => {
+                  setIsConfirmarExamesModalVisible(false);
+                  setExameParaConfirmar(null);
+                  setExamesParaConfirmar([]);
+                }}>Cancelar</Button>
+                <Button
+                  type="primary"
+                  onClick={processarConfirmacaoExames}
+                  disabled={!examesParaConfirmar.some(e => e.disponivel)}
+                  style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                >
+                  Confirmar e Enviar
+                </Button>
+              </Space>
+            </div>
+          </Modal>
+
+          {/* Modal de Rejeitar Solicitação de Exame */}
+          <Modal
+            title={<span style={{ color: '#ff4d4f', fontWeight: 'bold' }}>❌ Rejeitar Solicitação de Exame</span>}
+            open={isRejeitarExameModalVisible}
+            onCancel={() => {
+              setIsRejeitarExameModalVisible(false);
+              setExameParaRejeitar(null);
+              rejeitarExameForm.resetFields();
+            }}
+            footer={null}
+            width={500}
+            style={{ top: 40 }}
+            bodyStyle={{ background: '#f7f9fa', borderRadius: 10 }}
+          >
+            {/* Info do paciente */}
+            <div style={{ background: '#fff2f0', border: '1px solid #ffccc7', borderRadius: 8, padding: 14, marginBottom: 20 }}>
+              <div style={{ fontWeight: 'bold', color: '#ff4d4f', fontSize: 15, marginBottom: 4 }}>
+                <UserOutlined style={{ marginRight: 6 }} />
+                {exameParaRejeitar?.nome}
+              </div>
+              <div style={{ color: '#555', fontSize: 13 }}>
+                <strong>NID:</strong> {exameParaRejeitar?.nid} &nbsp;|&nbsp;
+                <strong>Exames:</strong> {exameParaRejeitar?.examesSolicitados}
+              </div>
+            </div>
+
+            <Form form={rejeitarExameForm} layout="vertical" onFinish={processarRejeicaoExame}>
+              <Form.Item
+                label="Motivo da Rejeição"
+                name="motivo"
+                rules={[{ required: true, message: 'Por favor, indique o motivo da rejeição.' }]}
+              >
+                <TextArea
+                  rows={4}
+                  placeholder="Ex: Equipamento indisponível, exame não realizado na clínica..."
+                  maxLength={500}
+                  showCount
+                />
+              </Form.Item>
+              <Form.Item style={{ textAlign: 'right', marginBottom: 0 }}>
+                <Space>
+                  <Button onClick={() => {
+                    setIsRejeitarExameModalVisible(false);
+                    setExameParaRejeitar(null);
+                    rejeitarExameForm.resetFields();
+                  }}>Cancelar</Button>
+                  <Button type="primary" danger htmlType="submit">
+                    Confirmar Rejeição
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </Modal>
+
           {/* Modal de Histórico de Exames */}
           <Modal
             title={<span style={{ color: '#2d3a4a', fontWeight: 'bold' }}>
@@ -9405,187 +9505,6 @@ const CadastroPaciente = () => {
   `}</style>
         </Card>
         
-        {/* Modal de Diagnóstico de Erro 500 */}
-        <Modal
-          title="🔧 Diagnóstico de Problemas do Servidor"
-          visible={isDiagnosticoModalVisible}
-          onCancel={() => setIsDiagnosticoModalVisible(false)}
-          footer={[
-            <Button key="fechar" onClick={() => setIsDiagnosticoModalVisible(false)}>
-              Fechar
-            </Button>,
-            <Button 
-              key="sincronizar-todos"
-              type="dashed"
-              onClick={async () => {
-                Modal.confirm({
-                  title: 'Sincronizar Todos os Pacientes?',
-                  content: 'Isso irá verificar todos os pacientes e sincronizar aqueles que estão faltando no backend. Esta operação pode demorar alguns minutos.',
-                  onOk: async () => {
-                    setIsDiagnosticoModalVisible(false);
-                    const pacientesComProblemas = [];
-                    
-                    message.loading('Verificando pacientes...', 0);
-                    
-                    // Verificar todos os pacientes
-                    for (const paciente of pacientes) {
-                      try {
-                        await axios.get(`http://127.0.0.1:8002/api/pacientes/${paciente.id}`, {
-                          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-                        });
-                      } catch (error) {
-                        if (error.response?.status === 404) {
-                          pacientesComProblemas.push(paciente);
-                        }
-                      }
-                    }
-                    
-                    message.destroy();
-                    
-                    if (pacientesComProblemas.length === 0) {
-                      message.success('Todos os pacientes já estão sincronizados!');
-                      return;
-                    }
-                    
-                    message.loading(`Sincronizando ${pacientesComProblemas.length} pacientes...`, 0);
-                    
-                    // Sincronizar pacientes com problemas
-                    let sucessos = 0;
-                    for (const paciente of pacientesComProblemas) {
-                      const sucesso = await sincronizarPacienteComBackend(paciente);
-                      if (sucesso) sucessos++;
-                    }
-                    
-                    message.destroy();
-                    message.success(`${sucessos}/${pacientesComProblemas.length} pacientes sincronizados com sucesso!`);
-                  }
-                });
-              }}
-              icon={<span>🔄</span>}
-            >
-              Sincronizar Todos
-            </Button>,
-            diagnosticoData && (
-              <Button 
-                key="copiar" 
-                type="primary" 
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(diagnosticoData, null, 2));
-                  message.success('Dados do diagnóstico copiados para a área de transferência!');
-                }}
-              >
-                Copiar Diagnóstico
-              </Button>
-            )
-          ]}
-          width={800}
-        >
-          {diagnosticoData && (
-            <div>
-              <div style={{ marginBottom: 16 }}>
-                <Text strong>Paciente:</Text> {pacienteDiagnostico?.nome} (ID: {pacienteDiagnostico?.id})
-                <br />
-                <Text type="secondary">Diagnóstico executado em: {new Date(diagnosticoData.timestamp).toLocaleString()}</Text>
-              </div>
-              
-              <Divider>Resultados dos Testes</Divider>
-              
-              {Object.entries(diagnosticoData.testes).map(([teste, resultado]) => (
-                <div key={teste} style={{ marginBottom: 12 }}>
-                  <Tag color={resultado.status === 'OK' ? 'green' : resultado.status === 'ALERTA' ? 'orange' : 'red'}>
-                    {teste.toUpperCase()}: {resultado.status}
-                  </Tag>
-                  <Text style={{ marginLeft: 8 }}>{resultado.detalhes}</Text>
-                  {resultado.codigo && (
-                    <Text type="secondary" style={{ marginLeft: 8 }}>(Código: {resultado.codigo})</Text>
-                  )}
-                </div>
-              ))}
-              
-              {diagnosticoData.recomendacoes.length > 0 && (
-                <>
-                  <Divider>Recomendações</Divider>
-                  <ul>
-                    {diagnosticoData.recomendacoes.map((recomendacao, index) => (
-                      <li key={index} style={{ marginBottom: 8 }}>
-                        <Text>{recomendacao}</Text>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              
-              <Divider>Dados do Paciente</Divider>
-              <pre style={{ 
-                backgroundColor: '#f5f5f5', 
-                padding: 12, 
-                borderRadius: 4, 
-                fontSize: '12px',
-                maxHeight: 200,
-                overflow: 'auto'
-              }}>
-                {JSON.stringify(diagnosticoData.dadosPaciente, null, 2)}
-              </pre>
-              
-              {/* Ações de Correção Automática */}
-              {diagnosticoData.testes.pacienteExiste?.status === 'ERRO' && (
-                <div style={{ marginTop: 16, padding: 16, backgroundColor: '#fff2e8', borderRadius: 4, border: '1px solid #ffb366' }}>
-                  <Text strong style={{ color: '#d46b08' }}>🔧 Correção Automática Disponível</Text>
-                  <div style={{ marginTop: 8, marginBottom: 12 }}>
-                    <Text>Este paciente existe no frontend mas não no backend. Você pode:</Text>
-                  </div>
-                  
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    <Button 
-                      type="primary" 
-                      icon={<span>🔄</span>}
-                      onClick={async () => {
-                        setIsDiagnosticoModalVisible(false);
-                        const sucesso = await sincronizarPacienteComBackend(pacienteDiagnostico);
-                        if (sucesso) {
-                          message.success('Agora você pode tentar o pagamento novamente!');
-                        }
-                      }}
-                      style={{ width: '100%' }}
-                    >
-                      Sincronizar Paciente com Backend
-                    </Button>
-                    
-                    <Button 
-                      danger 
-                      icon={<span>🗑️</span>}
-                      onClick={() => {
-                        Modal.confirm({
-                          title: 'Remover Paciente do Frontend?',
-                          content: `Tem certeza que deseja remover "${pacienteDiagnostico.nome}" da lista? Esta ação não pode ser desfeita.`,
-                          onOk: () => {
-                            const updatedPacientes = pacientes.filter(p => p.id !== pacienteDiagnostico.id);
-                            setPacientes(updatedPacientes);
-                            setIsDiagnosticoModalVisible(false);
-                            message.success('Paciente removido da lista local');
-                          }
-                        });
-                      }}
-                      style={{ width: '100%' }}
-                    >
-                      Remover da Lista Local
-                    </Button>
-                  </Space>
-                </div>
-              )}
-
-              <div style={{ marginTop: 16, padding: 12, backgroundColor: '#e6f7ff', borderRadius: 4 }}>
-                <Text strong>📝 Como usar este diagnóstico:</Text>
-                <ul style={{ marginTop: 8, marginBottom: 0 }}>
-                  <li>Use as ações de correção automática acima se disponíveis</li>
-                  <li>Copie os dados usando o botão "Copiar Diagnóstico"</li>
-                  <li>Verifique os logs do backend Laravel para mais detalhes</li>
-                  <li>Compare os dados com o que o backend espera receber</li>
-                </ul>
-              </div>
-            </div>
-          )}
-        </Modal>
       </div>
     </div>
 

@@ -23,7 +23,7 @@ class PatientService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando pacientes...'); // DEBUG
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/pacientes`, {
                 headers: {
@@ -34,9 +34,9 @@ class PatientService {
                 params: params // search, per_page, page, etc.
             });
             
-            console.log('📥 Pacientes recebidos:', response.data); // DEBUG
+            // ...existing code...
             
-            // Estrutura esperada: { status: 'success', data: [...] } ou { data: [...] }
+            // ...existing code...
             if (response.data.status === 'success') {
                 return {
                     success: true,
@@ -68,15 +68,7 @@ class PatientService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar pacientes:', error);
-            console.error('❌ Response:', error.response?.data);
-            console.error('❌ Status:', error.response?.status);
-            console.error('❌ URL tentada:', `${API_URL}/pacientes`);
-            
-            // Se for erro de rede (backend offline)
-            if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-                console.error('🔌 Backend parece estar offline ou inacessível');
-            }
+            // ...existing code...
             
             return {
                 success: false,
@@ -95,7 +87,7 @@ class PatientService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando paciente ID:', id); // DEBUG
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/pacientes/${id}`, {
                 headers: {
@@ -105,7 +97,7 @@ class PatientService {
                 }
             });
             
-            console.log('📥 Paciente recebido:', response.data); // DEBUG
+            // ...existing code...
             
             if (response.data.status === 'success') {
                 return {
@@ -127,7 +119,7 @@ class PatientService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar paciente:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -145,7 +137,7 @@ class PatientService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('🔍 Buscando pacientes com query:', query); // DEBUG
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/pacientes`, {
                 headers: {
@@ -158,7 +150,7 @@ class PatientService {
                 }
             });
             
-            console.log('📥 Resultados da busca:', response.data); // DEBUG
+            // ...existing code...
             
             if (response.data.status === 'success') {
                 return {
@@ -495,6 +487,43 @@ class PatientService {
                 message: 'Erro ao validar referências',
                 error: error.message,
                 errors: error.response?.data?.errors || {}
+            };
+        }
+    }
+
+    /**
+     * Confirmar solicitação de exame no Patient-Service
+     * PUT /api/solicitacoes-exames/{id}/confirmar
+     * @param {number} solicitacaoId - ID da solicitação criada pelo Consultation-Service
+     * @param {Object} payload - Dados adicionais de confirmação (opcional)
+     * @returns {Promise}
+     */
+    async confirmarSolicitacaoExame(solicitacaoId, payload = {}) {
+        try {
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            console.log('📤 [PatientService] Confirmando solicitação de exame ID:', solicitacaoId);
+
+            const response = await axios.put(
+                `${API_URL}/solicitacoes-exames/${solicitacaoId}/confirmar`,
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000
+                }
+            );
+
+            console.log('✅ [PatientService] Solicitação confirmada:', response.data);
+            return { success: true, data: response.data };
+        } catch (error) {
+            console.error('❌ [PatientService] Erro ao confirmar solicitação de exame:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Erro ao confirmar solicitação de exame',
+                error: error.message
             };
         }
     }

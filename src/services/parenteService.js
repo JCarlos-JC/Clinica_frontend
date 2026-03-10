@@ -14,7 +14,7 @@ class ParenteService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log(`📤 Buscando parentes do paciente NID: ${pacienteNid}...`);
+            // ...existing code...
             
             // Lista de endpoints para tentar
             const endpoints = [
@@ -30,7 +30,7 @@ class ParenteService {
                 const endpoint = endpoints[i];
                 
                 try {
-                    console.log(`🔄 Tentativa ${i + 1}/${endpoints.length}: ${endpoint}`);
+                    // ...existing code...
                     
                     const response = await axios.get(endpoint, {
                         headers: {
@@ -41,7 +41,7 @@ class ParenteService {
                         timeout: 10000
                     });
                     
-                    console.log(`✅ Sucesso na tentativa ${i + 1}:`, response.data);
+                    // ...existing code...
                     
                     // Processar resposta de sucesso
                     if (response.data.success) {
@@ -65,22 +65,21 @@ class ParenteService {
                     };
                     
                 } catch (endpointError) {
-                    lastError = endpointError;
                     
                     // Se é 404, continua para próximo endpoint
                     if (endpointError.response?.status === 404) {
-                        console.warn(`⚠️ Endpoint ${i + 1} não encontrado (404): ${endpoint}`);
+                        // ...existing code...
                         continue;
                     }
                     
                     // Se é outro erro, também tenta o próximo
-                    console.warn(`⚠️ Erro no endpoint ${i + 1}:`, endpointError.response?.status, endpointError.message);
+                    // ...existing code...
                     continue;
                 }
             }
             
             // Se chegou aqui, todos os endpoints falharam
-            console.error('❌ Todos os endpoints falharam. Último erro:', lastError);
+            // ...existing code...
             
             // Retorno graceful - não é erro crítico se paciente não tem parentes
             return {
@@ -90,7 +89,7 @@ class ParenteService {
             };
             
         } catch (error) {
-            console.error('❌ Erro CRÍTICO ao buscar parentes:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -109,7 +108,7 @@ class ParenteService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log(`📤 Criando parente para paciente NID: ${pacienteNid}`, parenteData);
+            // ...existing code...
             
             // Transformar dados para formato do backend (snake_case)
             const payload = {
@@ -120,7 +119,7 @@ class ParenteService {
                 celular_alternativo: parenteData.celularAlternativo
             };
             
-            console.log('📤 Payload enviado:', payload);
+            // ...existing code...
             
             const response = await axios.post(
                 `${API_URL}/pacientes/${pacienteNid}/parentes`,
@@ -134,7 +133,7 @@ class ParenteService {
                 }
             );
             
-            console.log('✅ Parente criado:', response.data);
+            // ...existing code...
             
             return {
                 success: true,
@@ -143,7 +142,7 @@ class ParenteService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao criar parente:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -162,7 +161,7 @@ class ParenteService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log(`📤 Atualizando parente ID: ${parenteId}`, parenteData);
+            // ...existing code...
             
             // Transformar dados para formato do backend (snake_case)
             const payload = {
@@ -172,7 +171,7 @@ class ParenteService {
                 celular_alternativo: parenteData.celularAlternativo
             };
             
-            console.log('📤 Payload enviado:', payload);
+            // ...existing code...
             
             const response = await axios.put(
                 `${API_URL}/parentes/${parenteId}`,
@@ -186,7 +185,7 @@ class ParenteService {
                 }
             );
             
-            console.log('✅ Parente atualizado:', response.data);
+            // ...existing code...
             
             return {
                 success: true,
@@ -195,7 +194,7 @@ class ParenteService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao atualizar parente:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -214,7 +213,7 @@ class ParenteService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log(`📤 Deletando parente ID: ${parenteId}...`);
+            // ...existing code...
             
             const response = await axios.delete(`${API_URL}/parentes/${parenteId}`, {
                 headers: {
@@ -224,7 +223,7 @@ class ParenteService {
                 }
             });
             
-            console.log('✅ Parente deletado:', response.data);
+            // ...existing code...
             
             return {
                 success: true,
@@ -232,7 +231,7 @@ class ParenteService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao deletar parente:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -250,7 +249,7 @@ class ParenteService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log(`📤 Buscando parente ID: ${parenteId}...`);
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/parentes/${parenteId}`, {
                 headers: {
@@ -260,7 +259,7 @@ class ParenteService {
                 }
             });
             
-            console.log('📥 Parente recebido:', response.data);
+            // ...existing code...
             
             return {
                 success: true,
@@ -268,7 +267,7 @@ class ParenteService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar parente:', error);
+            // ...existing code...
             
             return {
                 success: false,

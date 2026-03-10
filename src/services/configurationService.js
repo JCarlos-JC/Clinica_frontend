@@ -17,7 +17,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando raças do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/racas`, {
                 headers: {
@@ -27,7 +27,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Raças recebidas do Configuration Service:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -42,7 +42,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar raças do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -61,7 +61,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando tipos de utentes do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/tipos-utentes`, {
                 headers: {
@@ -71,7 +71,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Tipos de utentes recebidos do Configuration Service:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -86,7 +86,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar tipos de utentes do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -105,7 +105,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando unidades orgânicas do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/unidades-organicas`, {
                 headers: {
@@ -115,7 +115,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Unidades orgânicas recebidas do Configuration Service:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -130,7 +130,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar unidades orgânicas do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -149,7 +149,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando tipos de documento do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/tipos-documento`, {
                 headers: {
@@ -159,7 +159,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Tipos de documento recebidos do Configuration Service:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -174,7 +174,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar tipos de documento do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -193,7 +193,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando províncias do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/provincias`, {
                 headers: {
@@ -203,7 +203,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Províncias recebidas do Configuration Service:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -218,7 +218,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar províncias do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -237,7 +237,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando distritos da província:', provinciaId);
+            // ...existing code...
             //implementar a rota correcta dos distritos com relacionamento provincia
             const response = await axios.get(`${API_URL}/distritos`, {
                 headers: {
@@ -250,7 +250,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Distritos recebidos:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -265,7 +265,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar distritos:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -284,7 +284,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando bairros do distrito:', distritoId);
+            // ...existing code...
             
             //implemtentar a rota certa do relacionamento
             const response = await axios.get(`${API_URL}/bairros`, {
@@ -298,7 +298,7 @@ class ConfigurationService {
                 }
             });
             
-            console.log('📥 Bairros recebidos:', response.data);
+            // ...existing code...
             
             if (response.data.success) {
                 return {
@@ -313,7 +313,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar bairros:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -359,7 +359,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro ao buscar tipos de documentos:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -384,7 +384,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('📤 Buscando graus de parentesco...');
+            // ...existing code...
             
             const response = await axios.get(`${API_URL}/graus-parentesco`, {
                 headers: {
@@ -395,7 +395,7 @@ class ConfigurationService {
                 timeout: 10000
             });
 
-            console.log('✅ Resposta da API graus-parentesco:', response.data);
+            // ...existing code...
 
             return {
                 success: true,
@@ -403,7 +403,7 @@ class ConfigurationService {
                 data: response.data?.data || response.data || []
             };
         } catch (error) {
-            console.error('❌ Erro ao buscar graus de parentesco:', error);
+            // ...existing code...
             
             return {
                 success: false,
@@ -422,7 +422,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            console.log('🚀 Buscando TODAS as configurações do Configuration Service (porta 8004)...');
+            // ...existing code...
             
             // Tentar buscar endpoint consolidado primeiro (se existir)
             try {
@@ -434,7 +434,7 @@ class ConfigurationService {
                     }
                 });
                 
-                console.log('📥 Configurações completas recebidas do endpoint consolidado:', response.data);
+                // ...existing code...
                 
                 if (response.data.success) {
                     return {
@@ -443,11 +443,11 @@ class ConfigurationService {
                     };
                 }
             } catch (consolidatedError) {
-                console.log('⚠️ Endpoint consolidado não disponível, buscando individualmente...');
+                // ...existing code...
             }
             
             // Se endpoint consolidado não existir, buscar individualmente
-            console.log('🔄 Buscando configurações individualmente...');
+            // ...existing code...
             
             const [racasRes, tiposRes, unidadesRes, docRes, provRes] = await Promise.all([
                 this.getRacas(),
@@ -457,13 +457,7 @@ class ConfigurationService {
                 this.getProvincias()
             ]);
             
-            console.log('📊 Resultados das buscas individuais:', {
-                racas: { success: racasRes.success, count: racasRes.data?.length || 0 },
-                tipos_utentes: { success: tiposRes.success, count: tiposRes.data?.length || 0 },
-                unidades_organicas: { success: unidadesRes.success, count: unidadesRes.data?.length || 0 },
-                tipos_documento: { success: docRes.success, count: docRes.data?.length || 0 },
-                provincias: { success: provRes.success, count: provRes.data?.length || 0 }
-            });
+            // ...existing code...
             
             return {
                 success: true,
@@ -477,7 +471,7 @@ class ConfigurationService {
             };
             
         } catch (error) {
-            console.error('❌ Erro CRÍTICO ao buscar configurações do Configuration Service:', error);
+            // ...existing code...
             
             return {
                 success: false,

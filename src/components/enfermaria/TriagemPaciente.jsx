@@ -26,14 +26,14 @@ const TriagemPaciente = () => {
   const {
     consultasPendentes,
     setConsultasPendentes,
-    medicos
+    // medicos
   } = useContext(ClinicContext);
 
   // Buscar triagens PENDENTES e CONCLUÍDAS de forma INDEPENDENTE do backend
   // Triagens pendentes: buscar da rota /triagens
   const { 
     triagens: triagensPendentesRaw, 
-    total: totalPendentes,
+    // total: totalPendentes,
     refresh: refreshPendentes 
   } = useTriagens({ 
     page: 1, 
@@ -44,30 +44,28 @@ const TriagemPaciente = () => {
   // Triagens concluídas: buscar DIRETAMENTE da rota /sinais-vitais
   const [triagensConcluidasRaw, setTriagensConcluidasRaw] = useState([]);
   const [totalConcluidas, setTotalConcluidas] = useState(0);
-  const [loadingConcluidas, setLoadingConcluidas] = useState(false);
+  // const [loadingConcluidas, setLoadingConcluidas] = useState(false);
 
   const refreshConcluidas = useCallback(async () => {
-    console.log('🔄 INICIANDO busca de sinais vitais...');
-    setLoadingConcluidas(true);
+    // ...existing code...
+    // setLoadingConcluidas(true);
     const token = localStorage.getItem('token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     
     try {
-      console.log('🔄 Buscando sinais vitais de http://127.0.0.1:8005/api/triagens/concluidas');
+      // ...existing code...
       const response = await axios.get('http://127.0.0.1:8005/api/triagens/concluidas', {
         headers,
         params: { page: 1, per_page: 20 }
       });
       
       const data = response.data;
-      console.log('📥 Resposta da API sinais-vitais:', data);
+      // ...existing code...
       
       if (Array.isArray(data)) {
-        console.log('✅ Dados em array direto:', data.length, 'registros');
         setTriagensConcluidasRaw(data);
         setTotalConcluidas(data.length);
       } else if (data.data && Array.isArray(data.data)) {
-        console.log('✅ Dados em data.data:', data.data.length, 'registros');
         setTriagensConcluidasRaw(data.data);
         setTotalConcluidas(data.meta?.total || data.data.length);
       } else {
@@ -81,7 +79,7 @@ const TriagemPaciente = () => {
       setTriagensConcluidasRaw([]);
       setTotalConcluidas(0);
     } finally {
-      setLoadingConcluidas(false);
+      // setLoadingConcluidas(false);
       console.log('✅ Busca de sinais vitais finalizada');
     }
   }, []);
@@ -184,41 +182,41 @@ const TriagemPaciente = () => {
   });
 
   // Normalizar campos de SINAIS VITAIS para triagens concluídas
-  const normalizeSinaisVitais = (sv = {}) => ({
-    // ID do registro de sinais vitais
-    id: sv.id || sv.sinais_vitais_id || null,
-    codigoTriagem: sv.triagem_id || null,
-    pacienteId: sv.paciente_id || (sv.paciente && sv.paciente.id) || null,
-    TriagemId: sv.triagem_id || null,
-    // Dados do paciente (podem vir nested)
-    nid: sv.nid || (sv.paciente && sv.paciente.nid) || null,
-    nome: sv.nome || (sv.paciente && (sv.paciente.nome_completo || sv.paciente.nome)) || null,
-    apelido: sv.apelido || (sv.paciente && sv.paciente.apelido) || null,
-    genero: sv.genero || (sv.paciente && sv.paciente.genero) || null,
-    dataNascimento: sv.data_nascimento || (sv.paciente && sv.paciente.data_nascimento) || null,
-    // Data da triagem
-    dataTriagem: sv.created_at || sv.updated_at || sv.data_triagem || null,
-    dataCadastro: sv.created_at || null,
-    // Status sempre concluída para sinais vitais
-    status: 'triagem_concluida',
-    tipoTriagem: sv.tipo_triagem || 'inicial',
-    // Sinais vitais (já vêm direto no objeto)
-    peso: sv.peso || null,
-    altura: sv.altura || null,
-    imc: sv.imc || null,
-    classificacaoIMC: sv.classificacao_imc || sv.classificacaoIMC || null,
-    pressaoArterial: sv.pressao_arterial || sv.pressaoArterial || null,
-    frequenciaCardiaca: sv.frequencia_cardiaca || sv.frequenciaCardiaca || null,
-    temperatura: sv.temperatura || null,
-    oximetria: sv.oximetria || null,
-    glicemiaCapilar: sv.glicemia_capilar || sv.glicemiaCapilar || null,
-    observacoes: sv.observacoes || null,
-    // Dados adicionais do paciente
-    tipoUtente: (sv.paciente && (sv.paciente.tipo_utente || sv.paciente.tipo_utente_id)) || sv.tipo_utente || null,
-    estadoUrgencia: sv.urgencia || sv.estado_urgencia || null,
-    // fallback
-    ...sv
-  });
+  // const normalizeSinaisVitais = (sv = {}) => ({
+  //   // ID do registro de sinais vitais
+  //   id: sv.id || sv.sinais_vitais_id || null,
+  //   codigoTriagem: sv.triagem_id || null,
+  //   pacienteId: sv.paciente_id || (sv.paciente && sv.paciente.id) || null,
+  //   TriagemId: sv.triagem_id || null,
+  //   // Dados do paciente (podem vir nested)
+  //   nid: sv.nid || (sv.paciente && sv.paciente.nid) || null,
+  //   nome: sv.nome || (sv.paciente && (sv.paciente.nome_completo || sv.paciente.nome)) || null,
+  //   apelido: sv.apelido || (sv.paciente && sv.paciente.apelido) || null,
+  //   genero: sv.genero || (sv.paciente && sv.paciente.genero) || null,
+  //   dataNascimento: sv.data_nascimento || (sv.paciente && sv.paciente.data_nascimento) || null,
+  //   // Data da triagem
+  //   dataTriagem: sv.created_at || sv.updated_at || sv.data_triagem || null,
+  //   dataCadastro: sv.created_at || null,
+  //   // Status sempre concluída para sinais vitais
+  //   status: 'triagem_concluida',
+  //   tipoTriagem: sv.tipo_triagem || 'inicial',
+  //   // Sinais vitais (já vêm direto no objeto)
+  //   peso: sv.peso || null,
+  //   altura: sv.altura || null,
+  //   imc: sv.imc || null,
+  //   classificacaoIMC: sv.classificacao_imc || sv.classificacaoIMC || null,
+  //   pressaoArterial: sv.pressao_arterial || sv.pressaoArterial || null,
+  //   frequenciaCardiaca: sv.frequencia_cardiaca || sv.frequenciaCardiaca || null,
+  //   temperatura: sv.temperatura || null,
+  //   oximetria: sv.oximetria || null,
+  //   glicemiaCapilar: sv.glicemia_capilar || sv.glicemiaCapilar || null,
+  //   observacoes: sv.observacoes || null,
+  //   // Dados adicionais do paciente
+  //   tipoUtente: (sv.paciente && (sv.paciente.tipo_utente || sv.paciente.tipo_utente_id)) || sv.tipo_utente || null,
+  //   estadoUrgencia: sv.urgencia || sv.estado_urgencia || null,
+  //   // fallback
+  //   ...sv
+  // });
 
   // Helper to extract the sinais_vitais resource from various API response shapes
   const extractSinais = (resp) => {
@@ -301,6 +299,49 @@ const TriagemPaciente = () => {
 
   const triagensPendentes = localTriagensPendentes;
   const triagensRealizadas = localTriagensRealizadas;
+
+  // Buscar tipos de consulta da API
+  useEffect(() => {
+    const fetchTiposConsulta = async () => {
+      try {
+        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+        const response = await triagemService.getTiposConsulta(token);
+        
+        // Verificar formato da resposta e extrair os dados
+        const tipos = response?.data || response || [];
+        setTiposConsulta(tipos);
+        console.log('✅ Tipos de consulta carregados:', tipos);
+      } catch (error) {
+        console.error('❌ Erro ao buscar tipos de consulta:', error);
+        message.error('Falha ao carregar tipos de consulta');
+        setTiposConsulta([]);
+      }
+    };
+
+    fetchTiposConsulta();
+  }, []);
+
+  // Buscar médicos da API
+  useEffect(() => {
+    const fetchMedicos = async () => {
+      try {
+        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+        const response = await triagemService.getMedicos(token);
+        
+        // Verificar formato da resposta e extrair os dados
+        const medicosData = response?.data || response || [];
+        setMedicosAPI(medicosData);
+        console.log('✅ Médicos carregados:', medicosData);
+      } catch (error) {
+        console.error('❌ Erro ao buscar médicos:', error);
+        message.error('Falha ao carregar médicos');
+        setMedicosAPI([]);
+      }
+    };
+
+    fetchMedicos();
+  }, []);
+
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isAgendarModalVisible, setIsAgendarModalVisible] = useState(false);
@@ -310,14 +351,33 @@ const TriagemPaciente = () => {
   const [formAgendar] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
   // Filtrar apenas médicos de clínica geral para triagem
-  const medicosClinicaGeral = (medicos || []).filter(m =>
-    m.especialidade === 'Clínico Geral' || m.especialidade === 'Medicina Geral'
-  );
+  // const medicosClinicaGeral = (medicos || []).filter(m =>
+  //   m.especialidade === 'Clínico Geral' || m.especialidade === 'Medicina Geral'
+  // );
   const [tipoConsultaSelecionado, setTipoConsultaSelecionado] = useState('');
+  const [tiposConsulta, setTiposConsulta] = useState([]);
+  const [medicosAPI, setMedicosAPI] = useState([]);
+  const [especialidadeSelecionada, setEspecialidadeSelecionada] = useState('');
   const [searchPendentes, setSearchPendentes] = useState('');
   const [searchConcluidas, setSearchConcluidas] = useState('');
   const [imc, setImc] = useState(null);
   const [imcEdit, setImcEdit] = useState(null);
+
+  // Extrair especialidades únicas dos médicos da API
+  const especialidadesDisponiveis = useMemo(() => {
+    const especialidades = medicosAPI
+      .map(med => med.cargo)
+      .filter(Boolean)
+      .filter((value, index, self) => self.indexOf(value) === index)
+      .sort();
+    return especialidades;
+  }, [medicosAPI]);
+
+  // Filtrar médicos por especialidade selecionada
+  const medicosFiltrados = useMemo(() => {
+    if (!especialidadeSelecionada) return medicosAPI;
+    return medicosAPI.filter(med => med.cargo === especialidadeSelecionada);
+  }, [medicosAPI, especialidadeSelecionada]);
 
   // Filtrar pacientes para cada categoria
   const pacientesFiltradosTriagem = triagensPendentes.filter(p => !p.tipoTriagem || p.tipoTriagem === 'inicial');
@@ -415,6 +475,7 @@ const TriagemPaciente = () => {
     setIsAgendarModalVisible(true);
     formAgendar.resetFields();
     setTipoConsultaSelecionado('');
+    setEspecialidadeSelecionada('');
   };
 
   // Função para marcar consulta
@@ -820,40 +881,111 @@ const TriagemPaciente = () => {
     })();
   };
 
-  const handleAgendarConsulta = (values) => {
-    // Definir automaticamente especialidade como Clínico Geral para triagem
-    let especialidade = "Clínico Geral";
-    let medico = values.medico;
+  const handleAgendarConsulta = async (values) => {
+    // Usar a especialidade selecionada do formulário
+    const especialidade = values.especialidade || especialidadeSelecionada;
+    const medico = values.medico;
+    
+    // Buscar o médico selecionado para obter o ID
+    const medicoSelecionado = medicosAPI.find(m => m.nome === medico);
+    const especialidade_id = medicoSelecionado?.id || null;
+    
     // Corrigir data/hora: usar diretamente se já são strings
     const dataConsulta = typeof values.dataConsulta === 'string' ? values.dataConsulta : (values.dataConsulta?.format ? values.dataConsulta.format('YYYY-MM-DD') : '');
     const horaConsulta = typeof values.horaConsulta === 'string' ? values.horaConsulta : (values.horaConsulta?.format ? values.horaConsulta.format('HH:mm') : '');
 
-    // Usar o ID correto do paciente original, não da triagem
-    const consulta = {
-      ...pacienteSelecionado,
-      ...values,
-      id: pacienteSelecionado.pacienteId || pacienteSelecionado.id, // Usar o ID original do paciente
-      pacienteId: pacienteSelecionado.pacienteId || pacienteSelecionado.id, // Manter referência
-      especialidade,
-      medico,
-      dataConsulta,
-      horaConsulta,
-      tipoConsulta: values.tipoConsulta,
-      motivoConsulta: values.motivoConsulta,
-      observacoes: values.observacoes,
-      status: 'aguardando_consulta',
-      dataAgendamento: new Date().toLocaleString(),
+    // Obter o NID do paciente (a rota usa NID, não triagem_id)
+    const nid = pacienteSelecionado.nid;
+
+    if (!nid) {
+      message.error('NID do paciente não encontrado. Não é possível agendar a consulta.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+
+    // Payload para enviar ao backend (campos conforme esperado pela API)
+    const payload = {
+      nid: nid, // Campo obrigatório no backend
+      medico: medico,
+      especialidade: especialidade,
+      especialidade_id: especialidade_id,
+      data_consulta: dataConsulta,
+      hora_consulta: horaConsulta,
+      tipo_consulta: values.tipoConsulta,
+      motivo_consulta: values.motivoConsulta,
+      observacoes: values.observacoes || null,
     };
 
-    setConsultasPendentes([...consultasPendentes, consulta]);
+    try {
+      console.log('📤 Agendando consulta para paciente NID:', nid, 'payload:', payload);
+      
+      const response = await axios.post(
+        `http://localhost:8005/api/triagens/agendar-consulta`,
+        payload,
+        { headers }
+      );
 
-    // Remover da lista de triagens pendentes usando o ID correto
-    setLocalTriagensPendentes(triagensPendentes.filter(p => p.id !== pacienteSelecionado.id));
+      console.log('✅ Consulta agendada com sucesso:', response.data);
 
-    setIsAgendarModalVisible(false);
-    message.success('Consulta agendada com sucesso!');
+      // Extrair dados do agendamento retornado pelo backend
+      const agendamentoData = response.data?.data?.agendamento || response.data?.agendamento || {};
+      const consultaData = response.data?.data?.consulta || response.data?.consulta || {};
 
-    // Se não for primeira vez, pode redirecionar para ConsultaPaciente (opcional)
+      // Usar o ID correto do paciente original, não da triagem
+      const consulta = {
+        ...pacienteSelecionado,
+        ...values,
+        id: agendamentoData.paciente_id || pacienteSelecionado.pacienteId || pacienteSelecionado.id,
+        pacienteId: agendamentoData.paciente_id || pacienteSelecionado.pacienteId || pacienteSelecionado.id,
+        nid: agendamentoData.nid || pacienteSelecionado.nid,
+        nome: agendamentoData.nome || pacienteSelecionado.nome,
+        apelido: agendamentoData.apelido || pacienteSelecionado.apelido,
+        especialidade,
+        especialidade_id,
+        medico: agendamentoData.medico || medico,
+        dataConsulta: agendamentoData.data_consulta || dataConsulta,
+        horaConsulta: agendamentoData.hora_consulta || horaConsulta,
+        tipoConsulta: agendamentoData.tipo_consulta || values.tipoConsulta,
+        motivoConsulta: values.motivoConsulta,
+        observacoes: values.observacoes,
+        status: agendamentoData.status || 'aguardando_consulta',
+        prioridade: agendamentoData.prioridade || null,
+        dataAgendamento: new Date().toLocaleString(),
+        // IDs do backend
+        agendamentoId: agendamentoData.id || null,
+        codigoAgendamento: agendamentoData.codigo_agendamento || null,
+        consultaId: consultaData.id || null,
+        triagemId: agendamentoData.triagem_id || pacienteSelecionado.triagem_id || null,
+      };
+
+      setConsultasPendentes([...consultasPendentes, consulta]);
+
+      // Remover da lista de triagens pendentes usando o ID correto
+      setLocalTriagensPendentes(triagensPendentes.filter(p => p.id !== pacienteSelecionado.id));
+
+      setIsAgendarModalVisible(false);
+      message.success('Consulta agendada com sucesso!');
+
+      // Atualizar listas do backend
+      setTimeout(() => {
+        if (typeof refreshAll === 'function') refreshAll();
+      }, 500);
+
+    } catch (error) {
+      console.error('❌ Erro ao agendar consulta:', error);
+      console.error('Response:', error.response?.data);
+      
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Erro ao agendar consulta no servidor';
+      
+      message.error(`Falha ao agendar consulta: ${errorMessage}`);
+      
+      // Em caso de erro, não adicionar à lista local para evitar inconsistências
+    }
   };  // Colunas para cada tipo de tabela
 
 
@@ -1522,7 +1654,8 @@ const TriagemPaciente = () => {
                       padding: '10px',
                       borderRadius: '6px',
                       border: '1px solid #d9d9d9',
-                      boxShadow: '0 2px 0 rgba(0,0,0,0.02)'
+                      boxShadow: '0 2px 0 rgba(0,0,0,0.02)',
+                      fontSize: '14px'
                     }}
                     value={tipoConsultaSelecionado}
                     onChange={e => {
@@ -1531,16 +1664,60 @@ const TriagemPaciente = () => {
                     }}
                   >
                     <option value="">Selecione o tipo</option>
-                    <option value="Emergência">Emergência</option>
-                    <option value="Muito Urgente">Muito Urgente</option>
-                    <option value="Não Urgência">Não Urgência</option>
-                    <option value="Urgente">Urgente</option>
+                    {tiposConsulta
+                      .sort((a, b) => (a.nivel || a.prioridade || 0) - (b.nivel || b.prioridade || 0))
+                      .map(tipo => (
+                        <option 
+                          key={tipo.id} 
+                          value={tipo.nome}
+                          style={{ 
+                            fontWeight: tipo.nivel === 1 ? 'bold' : 'normal',
+                            color: tipo.cor || 'inherit'
+                          }}
+                        >
+                          {tipo.nome} {tipo.nivel ? `(Nível ${tipo.nivel})` : ''}
+                        </option>
+                      ))
+                    }
                   </select>
                 </Form.Item>
               </Col>
             </Row>
+            
             <Form.Item
-              label={<span style={{ fontWeight: '500' }}>Médico - Clínica Geral</span>}
+              label={<span style={{ fontWeight: '500' }}>Especialidade</span>}
+              name="especialidade"
+              rules={[{ required: true, message: 'Selecione a especialidade' }]}
+            >
+              <select
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #d9d9d9',
+                  boxShadow: '0 2px 0 rgba(0,0,0,0.02)',
+                  fontSize: '14px'
+                }}
+                value={especialidadeSelecionada}
+                onChange={e => {
+                  setEspecialidadeSelecionada(e.target.value);
+                  formAgendar.setFieldsValue({ 
+                    especialidade: e.target.value,
+                    medico: '' // Limpar seleção de médico ao mudar especialidade
+                  });
+                }}
+              >
+                <option value="">Selecione a especialidade</option>
+                {especialidadesDisponiveis.map((esp, index) => (
+                  <option key={index} value={esp}>
+                    {esp}
+                  </option>
+                ))}
+              </select>
+            </Form.Item>
+
+            <Form.Item
+              label={<span style={{ fontWeight: '500' }}>Médico</span>}
               name="medico"
               rules={[{ required: true, message: 'Selecione o médico' }]}
             >
@@ -1550,15 +1727,19 @@ const TriagemPaciente = () => {
                   padding: '10px',
                   borderRadius: '6px',
                   border: '1px solid #d9d9d9',
-                  boxShadow: '0 2px 0 rgba(0,0,0,0.02)'
+                  boxShadow: '0 2px 0 rgba(0,0,0,0.02)',
+                  fontSize: '14px'
                 }}
                 value={formAgendar.getFieldValue('medico') || ''}
                 onChange={e => formAgendar.setFieldsValue({ medico: e.target.value })}
+                disabled={!especialidadeSelecionada}
               >
-                <option value="">Selecione o médico</option>
-                {medicosClinicaGeral.map(med => (
+                <option value="">
+                  {especialidadeSelecionada ? 'Selecione o médico' : 'Primeiro selecione a especialidade'}
+                </option>
+                {medicosFiltrados.map(med => (
                   <option key={med.id} value={med.nome}>
-                    {med.nome} - Clínico Geral
+                    {med.nome}
                   </option>
                 ))}
               </select>

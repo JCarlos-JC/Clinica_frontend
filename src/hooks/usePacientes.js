@@ -20,7 +20,6 @@ const usePacientes = () => {
    * Busca todos os pacientes com paginação e filtros
    */
   const carregarPacientes = useCallback(async (params = {}) => {
-    console.log('🚀 carregarPacientes chamado:', { params, currentState: pacientes.length });
     setLoading(true);
     setError(null);
 
@@ -32,12 +31,10 @@ const usePacientes = () => {
         ...params,
       });
 
-      console.log('📡 Resposta do patientService:', { success: response?.success, hasData: !!response?.data, dataLength: response?.data?.length });
 
       // patientService returns { success, data, pagination? }
       const payload = response && response.success ? response.data : response;
 
-      console.log('📊 Payload processado:', { isArray: Array.isArray(payload), length: payload?.length });
 
       // Normalizar dados para o formato esperado pelo frontend
       const pacientesNormalizados = (payload || []).map(paciente => ({
@@ -89,21 +86,7 @@ const usePacientes = () => {
         ...paciente,
       }));
 
-      console.log('✅ Pacientes normalizados:', { 
-        total: pacientesNormalizados.length, 
-        primeiro: pacientesNormalizados[0]?.nome,
-        // 🔍 DEBUG: Verificar se a normalização está correta para o primeiro paciente
-        primeiroCompleto: {
-          id: pacientesNormalizados[0]?.id,
-          nome: pacientesNormalizados[0]?.nome,
-          tipo_utente_id: pacientesNormalizados[0]?.tipo_utente_id,
-          tipoUtenteId: pacientesNormalizados[0]?.tipoUtenteId,
-          unidade_organica_id: pacientesNormalizados[0]?.unidade_organica_id,
-          unidadeOrganicaId: pacientesNormalizados[0]?.unidadeOrganicaId
-        }
-      });
       setPacientes(pacientesNormalizados);
-      console.log('📝 setPacientes executado com', pacientesNormalizados.length, 'pacientes');
 
       // Atualizar paginação se disponível
       const paginationPayload = response && (response.pagination || response.meta || response.data?.pagination || response.data?.meta);
@@ -117,7 +100,6 @@ const usePacientes = () => {
 
       return pacientesNormalizados;
     } catch (err) {
-      console.error('Erro ao carregar pacientes:', err);
       setError(err.message || 'Erro ao carregar pacientes');
       message.error('Erro ao carregar pacientes do servidor');
       return [];

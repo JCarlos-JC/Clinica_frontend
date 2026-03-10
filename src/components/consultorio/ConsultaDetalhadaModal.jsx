@@ -41,6 +41,8 @@ import AltaModal from './AltaModal';
 import ObitoModal from './ObitoModal';
 import TransferenciaModal from './TransferenciaModal';
 import { ClinicContext } from '../../context/ClinicContext';
+import consultaService from '../../services/consultaService';
+import patientService from '../../services/patientService';
 
 const { Option } = Select;
 
@@ -158,8 +160,6 @@ const ConsultaDetalhadaModal = ({
     consultasRealizadas,
     examesPendentes,
     setExamesPendentes,
-    examesConcluidos,
-    setExamesConcluidos,
     // Adicionar consultasPendentes e setConsultasPendentes para uso nas funções internas
     consultasPendentes,
     setConsultasPendentes
@@ -217,38 +217,7 @@ const ConsultaDetalhadaModal = ({
     // Se há exames solicitados que foram enviados para o laboratório,
     // adicionar aos exames concluídos do contexto quando finalizados
     if (temExames && deveFinalizarConsulta) {
-      // Ensure both arrays are valid before concatenating
-      const agendamentoExames = Array.isArray(agendamento?.exames) ? agendamento.exames : [];
-      const currentExames = Array.isArray(exames) ? exames : [];
-      
-      const examesToContext = [...agendamentoExames, ...currentExames];
-      
-      // Filter out any invalid exam objects
-      examesToContext
-        .filter(exame => exame && typeof exame === 'object')
-        .forEach(exame => {
-          if (exame.estado === 'Enviado para Laboratório') {
-            const exameCompleto = {
-              id: Date.now() + Math.random(), // Garantir ID único
-              pacienteId: agendamento?.id,
-              resultadosExames: {
-                [exame.nome || 'Exame sem nome']: 'Resultado pendente - consulta finalizada com exames'
-              },
-              dataExames: new Date(),
-              tipoTriagem: 'exames',
-              observacoes: exame.observacoes || 'Exame solicitado durante consulta médica',
-              nome: agendamento?.nome,
-              nid: agendamento?.nid,
-              apelido: agendamento?.apelido,
-              genero: agendamento?.genero,
-              dataNascimento: agendamento?.dataNascimento,
-              tipoUtente: agendamento?.tipoUtente,
-              celular: agendamento?.celular
-            };
-            
-            setExamesConcluidos(prev => [...prev, exameCompleto]);
-          }
-        });
+      // Exames are already handled by context updates
     }
 
     // CORREÇÃO: Verificar se esta é uma consulta de retorno com exames
@@ -289,23 +258,10 @@ const ConsultaDetalhadaModal = ({
     }
     
     onFinish(completeData);
-  };const handleAlta = () => {
-    form.validateFields().then(values => {
-      // Save the form data first
-      const formData = { ...values, agendamentoId: agendamento?.id };
-      
-      // Then open the Alta Modal
-      setAltaModalVisible(true);
-    }).catch(error => {
-      console.error("Form validation failed:", error);
-    });
   };
 
   const handleExames = () => {
     form.validateFields().then(values => {
-      // Save the current form data first, similar to AltaModal logic
-      const formData = { ...values, agendamentoId: agendamento?.id };
-      
       // Then open the Exame Modal
       setExameModalVisible(true);
     }).catch(error => {
@@ -315,9 +271,6 @@ const ConsultaDetalhadaModal = ({
 
   const handlePrescricoes = () => {
     form.validateFields().then(values => {
-      // Save the current form data first, similar to AltaModal logic  
-      const formData = { ...values, agendamentoId: agendamento?.id };
-      
       // Then open the Prescricao Modal
       setPrescricaoModalVisible(true);
     }).catch(error => {
@@ -418,6 +371,7 @@ const ConsultaDetalhadaModal = ({
     ]);
     const [customExameName, setCustomExameName] = useState('');
     const [enviarParaLaboratorio, setEnviarParaLaboratorio] = useState(true);
+    const [loadingExamesAPI, setLoadingExamesAPI] = useState(false);
 
     const addCustomExame = () => {
       if (customExameName.trim() !== '') {
@@ -514,43 +468,79 @@ const ConsultaDetalhadaModal = ({
       message.success(`${novosExames.length} exame(s) adicionado(s) com sucesso`);
     };
 
-    const handleExameModalFinish = () => {
-      // Prepare data similar to AltaModal logic
-      const exameData = {
-        exames: exames,
-        pacienteId: agendamento?.id,
-        dataExames: new Date().toLocaleString(),
-        // Com nova lógica: exames podem finalizar consulta mas não terminam ciclo
-        deveFinalizarConsulta: true,
-        deveTerminarCiclo: false, // Paciente permanece na lista
-        tipoFinalizacao: 'so_exames',
-        aguardandoExames: true // CORREÇÃO: Adicionar flag explícito para marcar aguardando exames
-      };
-
-      // CORREÇÃO: Atualizar o status do paciente na lista de consultas pendentes
-      // Usar as referências do contexto já obtidas no componente principal
-      if (consultasPendentes && setConsultasPendentes && agendamento?.id) {
-        setConsultasPendentes(prev =>
-          prev.map(p => {
-            if (p.id === agendamento.id || p.pacienteId === agendamento.id) {
-              return {
-                ...p,
-                aguardandoExames: true,
-                statusExames: 'pendente',
-                dataExames: new Date().toLocaleString()
-              };
-            }
-            return p;
-          })
-        );
+    const handleExameModalFinish = async () => {
+      if (exames.length === 0) {
+        message.warning('Adicione pelo menos um exame antes de salvar.');
+        return;
       }
 
-      // Close the modal and show success message like AltaModal
-      setExameModalVisible(false);
-      message.success({
-        content: `${exames.length} exame(s) adicionado(s). Consulta pode ser finalizada, mas paciente permanecerá na lista.`,
-        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
-      });
+      setLoadingExamesAPI(true);
+      // Passo 1: Solicitar exames via Consultation-Service
+      // POST http://127.0.0.1:8007/api/consultas/{id}/exames
+      const consultaId = agendamento?.consulta_id || agendamento?.agendamento_id || agendamento?.id;
+
+      try {
+        const payload = {
+          exames: exames.map(exame => ({
+            tipo_exame: exame.nome,
+            prioridade: (exame.prioridade || 'Normal').toLowerCase(),
+            status: 'solicitado',
+            data_coleta: exame.dataColeta || null,
+            observacoes: exame.observacoes || ''
+          })),
+          observacoes: exames.map(e => e.observacoes).filter(Boolean).join('; ') || '',
+          paciente_id: agendamento?.pacienteId || agendamento?.paciente_id || agendamento?.id,
+        };
+
+        // ...existing code...
+
+        const resConsulta = await consultaService.solicitarExames(consultaId, payload);
+        // ...existing code...
+
+        // Passo 2: Confirmar no Patient-Service
+        // PUT http://127.0.0.1:8002/api/solicitacoes-exames/{id}/confirmar
+        const solicitacaoId =
+          resConsulta?.data?.solicitacao_id ||
+          resConsulta?.solicitacao_id ||
+          resConsulta?.data?.id ||
+          resConsulta?.id;
+
+        if (solicitacaoId) {
+          // ...existing code...
+          const resPatient = await patientService.confirmarSolicitacaoExame(solicitacaoId);
+          if (resPatient.success) {
+            // ...existing code...
+          } else {
+            // ...existing code...
+          }
+        } else {
+          // ...existing code...
+        }
+
+        // Atualizar o contexto local
+        if (consultasPendentes && setConsultasPendentes && agendamento?.id) {
+          setConsultasPendentes(prev =>
+            prev.map(p => {
+              if (p.id === agendamento.id || p.pacienteId === agendamento.id) {
+                return { ...p, aguardandoExames: true, statusExames: 'pendente' };
+              }
+              return p;
+            })
+          );
+        }
+
+        setExameModalVisible(false);
+        message.success(`${exames.length} exame(s) solicitado(s) com sucesso e enviado(s) para o laboratório!`);
+
+      } catch (error) {
+        // ...existing code...
+        message.error(
+          error.response?.data?.message ||
+          'Erro ao solicitar exames. Verifique a conexão com o servidor.'
+        );
+      } finally {
+        setLoadingExamesAPI(false);
+      }
     };
 
     const exameColumns = [
@@ -615,20 +605,35 @@ const ConsultaDetalhadaModal = ({
       <Modal
         title="Solicitar Exames"
         open={exameModalVisible}
-        onCancel={() => setExameModalVisible(false)}
+        onCancel={(e) => {
+          e?.stopPropagation?.();
+          setExameModalVisible(false);
+        }}
         width={800}
+        maskClosable={false}
+        keyboard={false}
         footer={[
-          <Button key="back" onClick={() => setExameModalVisible(false)}>
+          <Button 
+            key="back" 
+            onClick={(e) => {
+              e?.stopPropagation?.();
+              setExameModalVisible(false);
+            }}
+          >
             Cancelar
           </Button>,
           <Button 
             key="submit" 
             type="primary" 
-            onClick={handleExameModalFinish} 
+            onClick={(e) => {
+              e?.stopPropagation?.();
+              handleExameModalFinish();
+            }}
             icon={<CheckCircleOutlined />}
+            loading={loadingExamesAPI}
             disabled={exames.length === 0}
           >
-            Salvar e Voltar à Consulta
+            Solicitar Exames ao Laboratório
           </Button>,
         ]}
       >
@@ -860,21 +865,11 @@ const ConsultaDetalhadaModal = ({
         handleConfirmPrescricoes();
       }
 
-      // Prepare data similar to AltaModal logic
-      const prescricaoData = {
-        prescricoes: [...prescricoes, ...prescricoesTemp],
-        pacienteId: agendamento?.id,
-        dataPrescricoes: new Date().toLocaleString(),
-        // Prescrições finalizam consulta E terminam ciclo
-        deveFinalizarConsulta: true,
-        deveTerminarCiclo: true, // Paciente será removido da lista
-        tipoFinalizacao: 'com_prescricao'
-      };
-
-      // Close the modal and show success message like AltaModal
+      // Apenas fechar o modal - NÃO finalizar a consulta aqui
+      // A finalização será feita pelo botão "Salvar Consulta" que chamará handleFinish
       setPrescricaoModalVisible(false);
       message.success({
-        content: `${prescricoes.length + prescricoesTemp.length} prescrição(ões) adicionada(s). Ciclo do paciente será finalizado.`,
+        content: `${prescricoes.length + prescricoesTemp.length} prescrição(ões) adicionada(s). Clique em "Salvar Consulta" para finalizar.`,
         icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
       });
     };
@@ -1113,7 +1108,9 @@ const ConsultaDetalhadaModal = ({
         `}</style>
       </Modal>
     );
-  };// Funções para o histórico do paciente
+  };
+
+  // Funções para o histórico do paciente
   const abrirHistorico = () => {
     setHistoricoVisivel(true);
   };
@@ -1411,8 +1408,8 @@ const ConsultaDetalhadaModal = ({
           </p>
           <p style={{ fontSize: '12px', color: '#999', marginTop: '20px' }}>
             Total de registros disponíveis no sistema: 
-            Triagens: {Array.isArray(triagensRealizadas) ? triagensRealizadas.length : 0}, 
-            Consultas: {Array.isArray(consultasRealizadas) ? consultasRealizadas.length : 0}
+            Triagens: 0,
+            Consultas: 0
           </p>
         </div>
       );
@@ -1492,8 +1489,11 @@ const ConsultaDetalhadaModal = ({
       </Timeline>
     );
   };  const renderTriagensTab = () => {
+    console.log('🎨 Renderizando tab de triagens');
     const eventos = historicoPaciente();
+    console.log('📊 Eventos totais:', eventos.length);
     const triagens = eventos.filter(e => e && e.categoria === 'triagem');
+    console.log('📊 Triagens filtradas:', triagens.length);
 
     if (triagens.length === 0) {
       return (
@@ -1526,6 +1526,7 @@ const ConsultaDetalhadaModal = ({
       </div>
     );
   };  const renderConsultasTab = () => {
+    console.log('🎨 Renderizando tab de consultas');
     const eventos = historicoPaciente();
     const consultas = eventos.filter(e => e && e.categoria === 'consulta');
 
@@ -1972,41 +1973,38 @@ const ConsultaDetalhadaModal = ({
         className="consulta-detalhada-modal"
       >        
         <Row gutter={[16, 16]}>
-          {/* Coluna Esquerda */}
-          <Col span={12}>
-            {renderPatientDataCard()}
-          </Col>
-          
-          {/* Coluna Direita - Formulário */}
+          {/* Coluna Esquerda - Formulário de Consulta */}
           <Col span={12}>
             {renderConsultaForm()}
           </Col>
+
+          {/* Coluna Direita - Dados do Paciente */}
+          <Col span={12}>
+            {renderPatientDataCard()}
+          </Col>
         </Row>
-        
+
         {/* Indicador de exames disponíveis */}
         {agendamento?.resultadosExames && Object.keys(agendamento.resultadosExames).length > 0 && (
-          <Row>
-            <Col span={24}>
-              <div style={{ 
-                background: '#f6ffed', 
-                border: '1px solid #b7eb8f', 
-                padding: '8px 12px', 
-                borderRadius: '4px',
-                marginTop: '16px',
-                display: 'flex',
-                alignItems: 'center'
-              }}>
-                <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px', fontSize: '16px' }} />
-                <div>
-                  <div style={{ fontWeight: 'bold' }}>Exames Disponíveis</div>
-                  <div style={{ fontSize: '12px' }}>
-                    Este paciente possui resultados de exames disponíveis para análise.
-                  </div>
-                </div>
+          <div style={{ 
+            background: '#f6ffed', 
+            border: '1px solid #b7eb8f', 
+            padding: '8px 12px', 
+            borderRadius: '4px',
+            marginTop: '16px',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px', fontSize: '16px' }} />
+            <div>
+              <div style={{ fontWeight: 'bold' }}>Exames Disponíveis</div>
+              <div style={{ fontSize: '12px' }}>
+                Este paciente possui resultados de exames disponíveis para análise.
               </div>
-            </Col>
-          </Row>
-        )}      </Modal>
+            </div>
+          </div>
+        )}
+      </Modal>
         {/* Alta Modal */}
       <AltaModal 
         open={altaModalVisible} 

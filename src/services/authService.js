@@ -8,28 +8,26 @@ class AuthService {
      */
     async login(email, password) {
         try {
-            console.log('📤 Enviando requisição de login...'); // DEBUG
+            // ...existing code...
 
             const response = await axios.post(`${API_URL}/auth/login`, {
                 email,
                 password
             });
 
-            console.log('📥 Resposta do servidor:', response.data); // DEBUG
+            // ...existing code...
 
             // ✅ Nova estrutura: access_token, token_type, user
             if (response.data.access_token && response.data.user) {
                 const token = response.data.access_token;
                 const user = response.data.user;
 
-                console.log('🔍 User recebido do backend:', user); // DEBUG
-                console.log('🔍 Token recebido:', token); // DEBUG
+                // ...existing code...
 
                 // ✅ BUSCAR ROLES DO USUÁRIO VIA API
                 let userRoles = [];
 
-                console.log('🔄 Tentando buscar roles do usuário...'); // DEBUG
-                console.log('🔄 URL da requisição:', `${API_URL}/users/${user.id}/roles`); // DEBUG
+                // ...existing code...
 
                 try {
                     const rolesResponse = await axios.get(`${API_URL}/users/${user.id}/roles`, {
@@ -40,41 +38,26 @@ class AuthService {
                         }
                     });
 
-                    console.log('📥 Roles response STATUS:', rolesResponse.status); // DEBUG
-                    console.log('📥 Roles response HEADERS:', rolesResponse.headers); // DEBUG
-                    console.log('📥 Roles response DATA completa:', rolesResponse.data); // DEBUG
-                    console.log('📥 Roles response DATA.roles:', rolesResponse.data.roles); // DEBUG
+                    // ...existing code...
 
                     // ✅ ESTRUTURA CORRETA: { user_id, nome, roles: [{id, nome, descricao}] }
                     if (rolesResponse.data && Array.isArray(rolesResponse.data.roles)) {
                         // Extrair nomes dos roles (usar 'nome' ao invés de 'name')
-                        userRoles = rolesResponse.data.roles.map(role => {
-                            console.log('🔍 Processando role:', role); // DEBUG
-                            return role.nome;
-                        });
-                        console.log('✅ Roles extraídos:', userRoles); // DEBUG
+                        userRoles = rolesResponse.data.roles.map(role => role.nome);
                     } else {
-                        console.log('⚠️ Estrutura de roles inesperada!'); // DEBUG
-                        console.log('⚠️ rolesResponse.data:', rolesResponse.data); // DEBUG
-                        console.log('⚠️ Array.isArray(rolesResponse.data.roles):', Array.isArray(rolesResponse.data.roles)); // DEBUG
+                        // ...existing code...
                     }
                 } catch (roleError) {
-                    console.error('❌ ERRO ao buscar roles:'); // DEBUG
-                    console.error('❌ roleError:', roleError); // DEBUG
-                    console.error('❌ roleError.message:', roleError.message); // DEBUG
-                    console.error('❌ roleError.response:', roleError.response); // DEBUG
-                    console.error('❌ roleError.response?.status:', roleError.response?.status); // DEBUG
-                    console.error('❌ roleError.response?.data:', roleError.response?.data); // DEBUG
-                    console.error('❌ roleError.config:', roleError.config); // DEBUG
+                    // ...existing code...
 
                     // Se der erro, tentar usar roles que vieram no user
                     if (user.roles && Array.isArray(user.roles)) {
-                        console.log('⚠️ Usando roles do user original:', user.roles); // DEBUG
+                        // ...existing code...
                         userRoles = user.roles;
                     }
                 }
 
-                console.log('🔍 Roles finais antes da normalização:', userRoles); // DEBUG
+                // ...existing code...
 
                 // ✅ Determinar tipo_usuario baseado nos roles
                 let tipo_usuario = 'user'; // Padrão
@@ -83,34 +66,33 @@ class AuthService {
                     // Normalizar nomes dos roles (case-insensitive)
                     const rolesNormalizados = userRoles.map(r => r.toLowerCase());
 
-                    console.log('🔍 Roles normalizados:', rolesNormalizados); // DEBUG
+                    // ...existing code...
 
                     // Prioridade: admin > medico > enfermeiro > recepcionista > laboratorista > farmaceutico
                     if (rolesNormalizados.includes('administrador') || rolesNormalizados.includes('admin')) {
                         tipo_usuario = 'admin';
-                        console.log('✅ Detectado como ADMIN'); // DEBUG
+                        // ...existing code...
                     } else if (rolesNormalizados.includes('médico') || rolesNormalizados.includes('medico')) {
                         tipo_usuario = 'medico';
-                        console.log('✅ Detectado como MEDICO'); // DEBUG
+                        // ...existing code...
                     } else if (rolesNormalizados.includes('enfermeiro')) {
                         tipo_usuario = 'enfermeiro';
-                        console.log('✅ Detectado como ENFERMEIRO'); // DEBUG
+                        // ...existing code...
                     } else if (rolesNormalizados.includes('recepcionista') || rolesNormalizados.includes('rececionista')) {
                         tipo_usuario = 'recepcionista';
-                        console.log('✅ Detectado como RECEPCIONISTA'); // DEBUG
+                        // ...existing code...
                     } else if (rolesNormalizados.includes('laboratorista') || rolesNormalizados.includes('analista')) {
                         tipo_usuario = 'laboratorista';
-                        console.log('✅ Detectado como LABORATORISTA'); // DEBUG
+                        // ...existing code...
                     } else if (rolesNormalizados.includes('farmacêutico') || rolesNormalizados.includes('farmaceutico')) {
                         tipo_usuario = 'farmaceutico';
-                        console.log('✅ Detectado como FARMACEUTICO'); // DEBUG
+                        // ...existing code...
                     } else {
                         // Usar primeiro role normalizado
                         tipo_usuario = userRoles[0].toLowerCase().replace('administrador', 'admin');
-                        console.log('✅ Usando primeiro role como tipo_usuario:', tipo_usuario); // DEBUG
                     }
                 } else {
-                    console.log('⚠️ Nenhum role encontrado, usando padrão: user'); // DEBUG
+                    // ...existing code...
                 }
 
                 // Normalizar estrutura do usuário
@@ -127,13 +109,7 @@ class AuthService {
                     roles: userRoles // Manter roles originais
                 };
 
-                console.log('✅ Usuário NORMALIZADO FINAL:', normalizedUser); // DEBUG
-                console.log('✅ normalizedUser.tipo_usuario:', normalizedUser.tipo_usuario); // DEBUG
-                console.log('✅ normalizedUser.roles:', normalizedUser.roles); // DEBUG
-                console.log('✅ normalizedUser.roles.length:', normalizedUser.roles.length); // DEBUG
-                console.log('✅ normalizedUser.roles[0]:', normalizedUser.roles[0]); // DEBUG
-                console.log('✅ typeof normalizedUser.roles:', typeof normalizedUser.roles); // DEBUG
-                console.log('✅ Array.isArray(normalizedUser.roles):', Array.isArray(normalizedUser.roles)); // DEBUG
+                // ...existing code...
 
                 localStorage.setItem('token', token);
                 localStorage.setItem('user', JSON.stringify(normalizedUser));
@@ -141,12 +117,7 @@ class AuthService {
 
                 // Verificar o que foi salvo IMEDIATAMENTE após salvar
                 const savedUser = JSON.parse(localStorage.getItem('user'));
-                console.log('💾 User SALVO no localStorage (verificação IMEDIATA):', savedUser); // DEBUG
-                console.log('💾 savedUser.tipo_usuario:', savedUser.tipo_usuario); // DEBUG
-                console.log('💾 savedUser.roles:', savedUser.roles); // DEBUG
-                console.log('💾 typeof savedUser.roles:', typeof savedUser.roles); // DEBUG
-                console.log('💾 Array.isArray(savedUser.roles):', Array.isArray(savedUser.roles)); // DEBUG
-                console.log('💾 savedUser.roles.length:', savedUser.roles.length); // DEBUG
+                // ...existing code...
 
                 return {
                     success: true,
@@ -173,7 +144,7 @@ class AuthService {
                 };
             }
 
-            console.error('❌ Estrutura de resposta não reconhecida:', response.data);
+            // ...existing code...
 
             return {
                 success: false,
@@ -181,8 +152,7 @@ class AuthService {
             };
 
         } catch (error) {
-            console.error('❌ Erro na requisição de login:', error);
-            console.error('❌ Resposta do erro:', error.response?.data);
+            // ...existing code...
 
             return {
                 success: false,
@@ -204,7 +174,7 @@ class AuthService {
                 });
             }
         } catch (error) {
-            console.error('Logout error:', error);
+            // ...existing code...
         } finally {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -243,7 +213,7 @@ class AuthService {
                     userRoles = rolesResponse.data.roles.map(role => role.nome);
                 }
             } catch (roleError) {
-                console.error('Erro ao buscar roles:', roleError);
+                // ...existing code...
                 if (user.roles && Array.isArray(user.roles)) {
                     userRoles = user.roles;
                 }
@@ -288,7 +258,7 @@ class AuthService {
             return normalizedUser;
 
         } catch (error) {
-            console.error('Get current user error:', error);
+            // ...existing code...
 
             if (error.response?.status === 401) {
                 localStorage.removeItem('token');
@@ -320,7 +290,7 @@ class AuthService {
             return [];
 
         } catch (error) {
-            console.error('Get user roles error:', error);
+            // ...existing code...
             return [];
         }
     }

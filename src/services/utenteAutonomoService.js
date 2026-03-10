@@ -223,6 +223,7 @@ class UtenteAutonomoService {
             
             if (response.data.success) {
                 return {
+            
                     success: true,
                     data: response.data.data
                 };

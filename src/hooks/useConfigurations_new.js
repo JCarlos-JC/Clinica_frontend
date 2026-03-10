@@ -36,10 +36,8 @@ const useConfigurations = () => {
    */
   const carregarTiposUtentes = useCallback(async () => {
     try {
-      console.log('📤 Carregando tipos de utentes...');
       const response = await configurationService.getTiposUtentes();
       
-      console.log('🔍 Resposta bruta de tipos utentes:', response);
       
       // Tratar diferentes estruturas de resposta
       let data;
@@ -52,36 +50,23 @@ const useConfigurations = () => {
           // Estrutura simples: {success: true, data: [...]}
           data = response.data;
         } else {
-          console.warn('⚠️ Estrutura de resposta não reconhecida:', response.data);
           data = [];
         }
       } else if (Array.isArray(response)) {
         // Resposta direta como array
         data = response;
       } else {
-        console.warn('⚠️ Resposta inválida de tipos utentes:', response);
         data = [];
       }
       
       if (data && data.length > 0) {
         setTiposUtentes(data);
-        console.log('✅ Tipos de utentes carregados:', data);
         return data;
       } else {
-        console.warn('⚠️ Nenhum tipo de utente retornado. Usando dados padrão.');
-        // Dados padrão de fallback
-        const tiposUtentesPadrao = [
-          { id: 1, nome: 'Estudante', codigo: 'estudante' },
-          { id: 2, nome: 'Funcionário', codigo: 'funcionario' },
-          { id: 3, nome: 'Investigador', codigo: 'investigador' },
-          { id: 4, nome: 'Visitante', codigo: 'visitante' },
-          { id: 5, nome: 'Outro', codigo: 'outro' }
-        ];
-        setTiposUtentes(tiposUtentesPadrao);
-        return tiposUtentesPadrao;
+        setTiposUtentes([]);
+        return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar tipos de utentes:', error);
       setError(error.message);
       message.error('Erro ao carregar tipos de utentes');
       return [];
@@ -93,20 +78,16 @@ const useConfigurations = () => {
    */
   const carregarProvincias = useCallback(async () => {
     try {
-      console.log('📤 Carregando províncias...');
       const response = await configurationService.getProvincias();
       
       if (response.success && response.data) {
         setProvincias(response.data);
-        console.log('✅ Províncias carregadas:', response.data);
         return response.data;
       } else {
-        console.warn('⚠️ Nenhuma província encontrada');
         setProvincias([]);
         return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar províncias:', error);
       setError(error.message);
       message.error('Erro ao carregar províncias');
       return [];
@@ -125,13 +106,11 @@ const useConfigurations = () => {
 
     // Verificar se já existe no cache
     if (distritosCache[provinciaId]) {
-      console.log(`✅ Usando cache de distritos para província ${provinciaId}`);
       setDistritos(distritosCache[provinciaId]);
       return distritosCache[provinciaId];
     }
 
     try {
-      console.log(`📤 Carregando distritos da província ${provinciaId}...`);
       const response = await configurationService.getDistritosByProvincia(provinciaId);
       
       if (response.success && response.data) {
@@ -143,15 +122,12 @@ const useConfigurations = () => {
           [provinciaId]: response.data
         }));
         
-        console.log('✅ Distritos carregados:', response.data);
         return response.data;
       } else {
-        console.warn(`⚠️ Nenhum distrito encontrado para província ${provinciaId}`);
         setDistritos([]);
         return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar distritos:', error);
       setError(error.message);
       message.error('Erro ao carregar distritos');
       return [];
@@ -170,13 +146,11 @@ const useConfigurations = () => {
 
     // Verificar se já existe no cache
     if (bairrosCache[distritoId]) {
-      console.log(`✅ Usando cache de bairros para distrito ${distritoId}`);
       setBairros(bairrosCache[distritoId]);
       return bairrosCache[distritoId];
     }
 
     try {
-      console.log(`📤 Carregando bairros do distrito ${distritoId}...`);
       const response = await configurationService.getBairrosByDistrito(distritoId);
       
       if (response.success && response.data) {
@@ -188,15 +162,12 @@ const useConfigurations = () => {
           [distritoId]: response.data
         }));
         
-        console.log('✅ Bairros carregados:', response.data);
         return response.data;
       } else {
-        console.warn(`⚠️ Nenhum bairro encontrado para distrito ${distritoId}`);
         setBairros([]);
         return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar bairros:', error);
       setError(error.message);
       message.error('Erro ao carregar bairros');
       return [];
@@ -208,20 +179,16 @@ const useConfigurations = () => {
    */
   const carregarRacas = useCallback(async () => {
     try {
-      console.log('📤 Carregando raças...');
       const response = await configurationService.getRacas();
       
       if (response.success && response.data) {
         setRacas(response.data);
-        console.log('✅ Raças carregadas:', response.data);
         return response.data;
       } else {
-        console.warn('⚠️ Nenhuma raça encontrada');
         setRacas([]);
         return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar raças:', error);
       setError(error.message);
       message.error('Erro ao carregar raças');
       return [];
@@ -233,7 +200,6 @@ const useConfigurations = () => {
    */
   const carregarTiposDocumentos = useCallback(async () => {
     try {
-      console.log('📤 Carregando tipos de documentos...');
       const response = await configurationService.getTiposDocumentos();
       
       // Verificar múltiplos formatos de resposta do backend
@@ -241,35 +207,15 @@ const useConfigurations = () => {
       
       if (dados && Array.isArray(dados) && dados.length > 0) {
         setTiposDocumentos(dados);
-        console.log('✅ Tipos de documentos carregados do backend:', dados);
         return dados;
       } else {
-        console.warn('⚠️ Nenhum tipo de documento retornado do backend. Usando dados padrão.');
-        console.log('📊 Resposta recebida:', response);
-        // Dados padrão de fallback
-        const tiposDocumentosPadrao = [
-          { id: 1, nome: 'Bilhete de Identidade', codigo: 'BI' },
-          { id: 2, nome: 'Passaporte', codigo: 'PASSAPORTE' },
-          { id: 3, nome: 'Cartão de Estudante', codigo: 'CARTAO_ESTUDANTE' },
-          { id: 4, nome: 'Outro', codigo: 'OUTRO' }
-        ];
-        setTiposDocumentos(tiposDocumentosPadrao);
-        setError(error.message);
-        return tiposDocumentosPadrao;
+        setTiposDocumentos([]);
+        return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar tipos de documentos:', error);
-      console.warn('⚠️ Usando dados padrão de tipos de documentos');
-      // Dados padrão de fallback em caso de erro
-      const tiposDocumentosPadrao = [
-        { id: 1, nome: 'Bilhete de Identidade', codigo: 'BI' },
-        { id: 2, nome: 'Passaporte', codigo: 'PASSAPORTE' },
-        { id: 3, nome: 'Cartão de Estudante', codigo: 'CARTAO_ESTUDANTE' },
-        { id: 4, nome: 'Outro', codigo: 'OUTRO' }
-      ];
-      setTiposDocumentos(tiposDocumentosPadrao);
       setError(error.message);
-      return tiposDocumentosPadrao;
+      message.error('Erro ao carregar tipos de documentos');
+      return [];
     }
   }, []);
 
@@ -278,7 +224,6 @@ const useConfigurations = () => {
    */
   const carregarUnidadesOrganicas = useCallback(async () => {
     try {
-      console.log('📤 Carregando unidades orgânicas...');
       const response = await configurationService.getUnidadesOrganicas();
       
       // Verificar múltiplos formatos de resposta do backend
@@ -286,50 +231,15 @@ const useConfigurations = () => {
       
       if (dados && Array.isArray(dados) && dados.length > 0) {
         setUnidadesOrganicas(dados);
-        console.log('✅ Unidades orgânicas carregadas do backend:', dados);
         return dados;
       } else {
-        console.warn('⚠️ Nenhuma unidade orgânica retornada do backend. Usando dados padrão.');
-        console.log('📊 Resposta recebida:', response);
-        // Dados padrão de fallback
-        const unidadesOrganicasPadrao = [
-          { id: 1, nome: 'Faculdade de Medicina', sigla: 'FM' },
-          { id: 2, nome: 'Faculdade de Direito', sigla: 'FD' },
-          { id: 3, nome: 'Faculdade de Engenharia', sigla: 'FENG' },
-          { id: 4, nome: 'Faculdade de Educação', sigla: 'FACED' },
-          { id: 5, nome: 'Faculdade de Veterinária', sigla: 'FAVET' },
-          { id: 6, nome: 'Faculdade de Agronomia e Engenharia Florestal', sigla: 'FAEF' },
-          { id: 7, nome: 'Faculdade de Economia', sigla: 'FEC' },
-          { id: 8, nome: 'Faculdade de Letras e Ciências Sociais', sigla: 'FLCS' },
-          { id: 9, nome: 'Faculdade de Ciências', sigla: 'FC' },
-          { id: 10, nome: 'Escola Superior de Hotelaria e Turismo', sigla: 'ESHTI' },
-          { id: 11, nome: 'Escola de Comunicação e Artes', sigla: 'ECA' },
-          { id: 12, nome: 'Escola Superior de Ciências do Desporto', sigla: 'ESCIDE' }
-        ];
-        setUnidadesOrganicas(unidadesOrganicasPadrao);
-        return unidadesOrganicasPadrao;
+        setUnidadesOrganicas([]);
+        return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar unidades orgânicas:', error);
-      console.warn('⚠️ Usando dados padrão de unidades orgânicas');
-      // Dados padrão de fallback em caso de erro
-      const unidadesOrganicasPadrao = [
-        { id: 1, nome: 'Faculdade de Medicina', sigla: 'FM' },
-        { id: 2, nome: 'Faculdade de Direito', sigla: 'FD' },
-        { id: 3, nome: 'Faculdade de Engenharia', sigla: 'FENG' },
-        { id: 4, nome: 'Faculdade de Educação', sigla: 'FACED' },
-        { id: 5, nome: 'Faculdade de Veterinária', sigla: 'FAVET' },
-        { id: 6, nome: 'Faculdade de Agronomia e Engenharia Florestal', sigla: 'FAEF' },
-        { id: 7, nome: 'Faculdade de Economia', sigla: 'FEC' },
-        { id: 8, nome: 'Faculdade de Letras e Ciências Sociais', sigla: 'FLCS' },
-        { id: 9, nome: 'Faculdade de Ciências', sigla: 'FC' },
-        { id: 10, nome: 'Escola Superior de Hotelaria e Turismo', sigla: 'ESHTI' },
-        { id: 11, nome: 'Escola de Comunicação e Artes', sigla: 'ECA' },
-        { id: 12, nome: 'Escola Superior de Ciências do Desporto', sigla: 'ESCIDE' }
-      ];
-      setUnidadesOrganicas(unidadesOrganicasPadrao);
+      setUnidadesOrganicas([]);
       setError(error.message);
-      return unidadesOrganicasPadrao;
+      return [];
     }
   }, []);
 
@@ -339,47 +249,18 @@ const useConfigurations = () => {
    */
   const carregarGrausParentesco = useCallback(async () => {
     try {
-      console.log('📤 Carregando graus de parentesco...');
       const response = await configurationService.getGrausParentesco();
       
       if (response.success && response.data) {
         setGrausParentesco(response.data);
-        console.log('✅ Graus de parentesco carregados do backend:', response.data);
         return response.data;
       } else {
-        console.warn('⚠️ Backend não disponível. Usando dados padrão de graus de parentesco.');
-        // Dados padrão de fallback
-        const grausParentescoPadrao = [
-          { id: 1, nome: 'Pai', codigo: 'pai' },
-          { id: 2, nome: 'Mãe', codigo: 'mae' },
-          { id: 3, nome: 'Irmão/Irmã', codigo: 'irmao' },
-          { id: 4, nome: 'Filho(a)', codigo: 'filho' },
-          { id: 5, nome: 'Cônjuge', codigo: 'conjuge' },
-          { id: 6, nome: 'Avô/Avó', codigo: 'avo' },
-          { id: 7, nome: 'Tio(a)', codigo: 'tio' },
-          { id: 8, nome: 'Primo(a)', codigo: 'primo' },
-          { id: 9, nome: 'Outro', codigo: 'outro' }
-        ];
-        setGrausParentesco(grausParentescoPadrao);
-        return grausParentescoPadrao;
+        setGrausParentesco([]);
+        return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar graus de parentesco:', error);
-      console.warn('⚠️ Usando dados padrão de graus de parentesco');
-      // Dados padrão de fallback em caso de erro
-      const grausParentescoPadrao = [
-        { id: 1, nome: 'Pai', codigo: 'pai' },
-        { id: 2, nome: 'Mãe', codigo: 'mae' },
-        { id: 3, nome: 'Irmão/Irmã', codigo: 'irmao' },
-        { id: 4, nome: 'Filho(a)', codigo: 'filho' },
-        { id: 5, nome: 'Cônjuge', codigo: 'conjuge' },
-        { id: 6, nome: 'Avô/Avó', codigo: 'avo' },
-        { id: 7, nome: 'Tio(a)', codigo: 'tio' },
-        { id: 8, nome: 'Primo(a)', codigo: 'primo' },
-        { id: 9, nome: 'Outro', codigo: 'outro' }
-      ];
-      setGrausParentesco(grausParentescoPadrao);
-      return grausParentescoPadrao;
+      setGrausParentesco([]);
+      return [];
     }
   }, []);
 
@@ -389,47 +270,39 @@ const useConfigurations = () => {
    */
   const carregarConfiguracoesPacientes = useCallback(async () => {
     try {
-      console.log('🔄 Buscando configurações válidas do serviço de pacientes...');
       
       const response = await patientService.getConfigurationOptions();
       
       if (response.success && response.data) {
-        console.log('✅ Configurações do serviço de pacientes carregadas:', response.data);
         setConfiguracoesPacientes(response.data);
         setConfigsPacientesLoaded(true);
         
         // Se as configurações do serviço de pacientes têm raças, usar essas
         if (response.data.racas && Array.isArray(response.data.racas)) {
-          console.log('🔄 Usando raças do serviço de pacientes:', response.data.racas);
           setRacas(response.data.racas);
         }
         
         // Se as configurações do serviço de pacientes têm tipos de utentes, usar esses
         if (response.data.tipos_utentes && Array.isArray(response.data.tipos_utentes)) {
-          console.log('🔄 Usando tipos utentes do serviço de pacientes:', response.data.tipos_utentes);
           setTiposUtentes(response.data.tipos_utentes);
         }
         
         // Se as configurações do serviço de pacientes têm províncias, usar essas
         if (response.data.provincias && Array.isArray(response.data.provincias)) {
-          console.log('🔄 Usando províncias do serviço de pacientes:', response.data.provincias);
           setProvincias(response.data.provincias);
         }
         
         // Se as configurações do serviço de pacientes têm unidades orgânicas, usar essas
         if (response.data.unidades_organicas && Array.isArray(response.data.unidades_organicas)) {
-          console.log('🔄 Usando unidades orgânicas do serviço de pacientes:', response.data.unidades_organicas);
           setUnidadesOrganicas(response.data.unidades_organicas);
         }
         
         return response.data;
       } else {
-        console.warn('⚠️ Não foi possível carregar configurações do serviço de pacientes, usando serviço de configuração');
         setConfigsPacientesLoaded(false);
         return null;
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar configurações do serviço de pacientes:', error);
       setConfigsPacientesLoaded(false);
       return null;
     }
@@ -444,7 +317,6 @@ const useConfigurations = () => {
     setError(null);
 
     try {
-      console.log('🔄 Carregando todas as configurações...');
       
       // Primeiro, tentar carregar configurações do serviço de pacientes
       const configsPacientes = await carregarConfiguracoesPacientes();
@@ -475,9 +347,7 @@ const useConfigurations = () => {
       
       await Promise.all(promises);
       
-      console.log('✅ Todas as configurações carregadas com sucesso!');
     } catch (error) {
-      console.error('❌ Erro ao carregar configurações:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -487,8 +357,9 @@ const useConfigurations = () => {
     carregarTiposUtentes,
     carregarProvincias,
     carregarRacas,
+    carregarUnidadesOrganicas,
     carregarTiposDocumentos,
-    carregarUnidadesOrganicas
+    carregarGrausParentesco
   ]);
 
   /**
@@ -500,7 +371,6 @@ const useConfigurations = () => {
     
     // Verificar se tiposUtentes é um array válido
     if (!Array.isArray(tiposUtentes) || tiposUtentes.length === 0) {
-      console.warn('⚠️ tiposUtentes não é um array válido:', tiposUtentes);
       return null;
     }
     
@@ -510,7 +380,6 @@ const useConfigurations = () => {
       t.descricao?.toLowerCase() === value.toLowerCase()
     );
     
-    console.log('🔍 Buscando tipo utente:', { value, tipo, tiposUtentes });
     return tipo ? tipo.id : null;
   }, [tiposUtentes]);
 
@@ -532,19 +401,15 @@ const useConfigurations = () => {
    */
   const validarConfiguracoes = useCallback(async () => {
     try {
-      console.log('🔍 Validando configurações com serviço de pacientes...');
       
       const response = await patientService.getConfigurationOptions();
       
       if (response.success && response.data) {
-        console.log('✅ Configurações válidas do serviço de pacientes:', response.data);
         return response.data;
       } else {
-        console.warn('⚠️ Não foi possível obter configurações do serviço de pacientes');
         return null;
       }
     } catch (error) {
-      console.error('❌ Erro ao validar configurações:', error);
       return null;
     }
   }, []);
@@ -587,6 +452,7 @@ const useConfigurations = () => {
     getTipoUtenteIdByValue,
     getProvinciaIdByNome
   };
+
 };
 
 export default useConfigurations;

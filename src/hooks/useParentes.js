@@ -45,7 +45,6 @@ const useParentes = (pacienteNid) => {
             updatedAt: parente.updated_at || parente.updatedAt
           }));
           
-          setParentes(parentesNormalizados);
           console.log('✅ Parentes carregados:', parentesNormalizados);
           return parentesNormalizados;
         } else {
@@ -63,7 +62,6 @@ const useParentes = (pacienteNid) => {
       }
       
     } catch (error) {
-      console.error('❌ Erro CRÍTICO ao carregar parentes:', error);
       setError(error.message || 'Erro ao carregar parentes');
       setParentes([]);
       return [];
@@ -73,7 +71,6 @@ const useParentes = (pacienteNid) => {
   }, [pacienteNid]);
 
   /**
-   * Cria um novo parente
    */
   const criarParente = useCallback(async (nid, dadosParente) => {
     if (!nid) {
@@ -149,14 +146,9 @@ const useParentes = (pacienteNid) => {
     setError(null);
 
     try {
-      console.log(`📤 Atualizando parente ID: ${parenteId}`, dadosParente);
-      
       const response = await parenteService.updateParente(parenteId, dadosParente);
-      
       if (response.success) {
         message.success(response.message || 'Acompanhante atualizado com sucesso!');
-        
-        // Normalizar dados do parente atualizado
         const parenteNormalizado = {
           id: response.data.id,
           nome: response.data.nome,
@@ -168,19 +160,11 @@ const useParentes = (pacienteNid) => {
           createdAt: response.data.created_at || response.data.createdAt,
           updatedAt: response.data.updated_at || response.data.updatedAt
         };
-        
-        // Atualizar no estado local
-        setParentes(prev => 
-          prev.map(p => p.id === parenteId ? parenteNormalizado : p)
-        );
-        
-        console.log('✅ Parente atualizado:', parenteNormalizado);
+        setParentes(prev => prev.map(p => p.id === parenteId ? parenteNormalizado : p));
         return parenteNormalizado;
       } else {
         message.error(response.message || 'Erro ao atualizar acompanhante');
         setError(response.message);
-        
-        // Mostrar erros de validação se existirem
         if (response.errors) {
           Object.keys(response.errors).forEach(field => {
             const errorMessages = response.errors[field];
@@ -189,7 +173,6 @@ const useParentes = (pacienteNid) => {
             }
           });
         }
-        
         return null;
       }
     } catch (error) {
