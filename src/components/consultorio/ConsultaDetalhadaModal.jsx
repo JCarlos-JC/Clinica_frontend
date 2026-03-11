@@ -492,10 +492,13 @@ const ConsultaDetalhadaModal = ({
           paciente_id: agendamento?.pacienteId || agendamento?.paciente_id || agendamento?.id,
         };
 
-        // ...existing code...
+        console.log('📋 [ExameModal] Passo 1 - Solicitando exames no Consultation-Service:', {
+          url: `POST /api/consultas/${consultaId}/exames`,
+          payload
+        });
 
         const resConsulta = await consultaService.solicitarExames(consultaId, payload);
-        // ...existing code...
+        console.log('✅ [ExameModal] Passo 1 concluído:', resConsulta);
 
         // Passo 2: Confirmar no Patient-Service
         // PUT http://127.0.0.1:8002/api/solicitacoes-exames/{id}/confirmar
@@ -506,15 +509,18 @@ const ConsultaDetalhadaModal = ({
           resConsulta?.id;
 
         if (solicitacaoId) {
-          // ...existing code...
+          console.log('📋 [ExameModal] Passo 2 - Confirmando no Patient-Service:', {
+            url: `PUT /api/solicitacoes-exames/${solicitacaoId}/confirmar`,
+            solicitacaoId
+          });
           const resPatient = await patientService.confirmarSolicitacaoExame(solicitacaoId);
           if (resPatient.success) {
-            // ...existing code...
+            console.log('✅ [ExameModal] Passo 2 concluído:', resPatient.data);
           } else {
-            // ...existing code...
+            console.warn('⚠️ [ExameModal] Passo 2 - Falha na confirmação Patient-Service:', resPatient.message);
           }
         } else {
-          // ...existing code...
+          console.warn('⚠️ [ExameModal] Passo 2 - ID da solicitação não encontrado na resposta do Consultation-Service');
         }
 
         // Atualizar o contexto local
@@ -533,7 +539,7 @@ const ConsultaDetalhadaModal = ({
         message.success(`${exames.length} exame(s) solicitado(s) com sucesso e enviado(s) para o laboratório!`);
 
       } catch (error) {
-        // ...existing code...
+        console.error('❌ [ExameModal] Erro no fluxo de solicitação de exames:', error);
         message.error(
           error.response?.data?.message ||
           'Erro ao solicitar exames. Verifique a conexão com o servidor.'

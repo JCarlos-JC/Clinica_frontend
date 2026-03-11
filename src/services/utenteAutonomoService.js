@@ -28,9 +28,7 @@ class UtenteAutonomoService {
                     'Content-Type': 'application/json'
                 }
             });
-            
-            console.log('📥 Utentes autônomos recebidos:', response.data);
-            
+                        
             if (response.data.success) {
                 return {
                     success: true,
@@ -61,7 +59,6 @@ class UtenteAutonomoService {
      */
     async createUtenteAutonomo(data) {
         try {
-            console.log('📤 Criando utente autônomo:', data);
             
             const token = localStorage.getItem('token');
             
@@ -126,16 +123,6 @@ class UtenteAutonomoService {
      */
     async updateUtenteAutonomo(id, data) {
         try {
-            console.log('📤 Atualizando utente autônomo:', { id, data });
-            console.log('🔍 ANÁLISE DETALHADA DO GÊNERO NA REQUISIÇÃO:', {
-                genero: data.genero,
-                generoType: typeof data.genero,
-                generoLength: data.genero?.length,
-                generoBytes: data.genero ? Array.from(data.genero).map(c => c.charCodeAt(0)) : null,
-                generoJSON: JSON.stringify(data.genero),
-                allData: JSON.stringify(data, null, 2)
-            });
-            
             const token = localStorage.getItem('token');
             
             const response = await axios.put(`${API_URL}/utentes-autonomos/${id}`, data, {

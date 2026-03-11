@@ -396,23 +396,7 @@ const useConfigurations = () => {
     return provincia ? provincia.id : null;
   }, [provincias]);
 
-  /**
-   * Valida configurações com o serviço de pacientes
-   */
-  const validarConfiguracoes = useCallback(async () => {
-    try {
-      
-      const response = await patientService.getConfigurationOptions();
-      
-      if (response.success && response.data) {
-        return response.data;
-      } else {
-        return null;
-      }
-    } catch (error) {
-      return null;
-    }
-  }, []);
+  // (Removido: função validarConfiguracoes não utilizada)
 
   // Carregar configurações iniciais ao montar o hook
   useEffect(() => {

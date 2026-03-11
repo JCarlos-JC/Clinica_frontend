@@ -23,7 +23,6 @@ class ParenteService {
                 `${API_URL}/parentes/by-patient/${encodeURIComponent(pacienteNid)}`
             ];
             
-            let lastError = null;
             
             // Tentar cada endpoint sequencialmente
             for (let i = 0; i < endpoints.length; i++) {
@@ -278,4 +277,5 @@ class ParenteService {
     }
 }
 
-export default new ParenteService();
+const parenteService = new ParenteService();
+export default parenteService;

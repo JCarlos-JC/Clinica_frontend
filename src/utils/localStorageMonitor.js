@@ -52,7 +52,7 @@ localStorage.clear = function() {
     return originalClear.apply(this, arguments);
 };
 
-console.log('✅ LocalStorage monitor ativado!');
+// console.log('✅ LocalStorage monitor ativado!');
 
 // export default {
 //     enable: () => {

@@ -118,7 +118,6 @@ const usePacientes = () => {
     try {
       const response = await patientService.getPatientById(id);
       const payload = response && response.success ? response.data : response;
-      console.log('Paciente carregado:', payload);
 
       // Normalizar dados
       const pacienteNormalizado = {
@@ -161,11 +160,7 @@ const usePacientes = () => {
     setError(null);
 
     try {
-      // Os dados já vêm no formato correto do componente (snake_case) seguindo o modelo Paciente
-      console.log('📊 Dados originais recebidos do formulário:', dadosPaciente);
-      console.log('📊 Tipo dos dados:', typeof dadosPaciente);
-      console.log('📊 Chaves dos dados:', Object.keys(dadosPaciente));
-      
+
       // Apenas remover campos null/undefined para evitar erros de validação
       const dadosBackend = {};
       
@@ -175,7 +170,6 @@ const usePacientes = () => {
         
         // Ignorar campos internos de controle
         if (key.startsWith('_')) {
-          console.log('🔧 Ignorando campo interno:', key);
           return;
         }
         
@@ -185,27 +179,6 @@ const usePacientes = () => {
         }
       });
       
-      console.log('🔍 Dados processados:', dadosBackend);
-      console.log('🔍 Número de campos processados:', Object.keys(dadosBackend).length);
-      
-      // Log crítico para debug de raca_id
-      console.log('🔍 CRÍTICO - Verificação de raca_id no hook:', {
-        raca_id_original: dadosPaciente.raca_id,
-        raca_id_processado: dadosBackend.raca_id,
-        tipo_original: typeof dadosPaciente.raca_id,
-        tipo_processado: typeof dadosBackend.raca_id,
-        foi_removido: !dadosBackend.hasOwnProperty('raca_id')
-      });
-      
-      // Log crítico para debug de bilhete_identidade
-      console.log('🔍 CRÍTICO - Verificação de bilhete_identidade no hook:', {
-        bilhete_identidade_original: dadosPaciente.bilhete_identidade,
-        bilhete_identidade_processado: dadosBackend.bilhete_identidade,
-        tipo_original: typeof dadosPaciente.bilhete_identidade,
-        tipo_processado: typeof dadosBackend.bilhete_identidade,
-        foi_removido: !dadosBackend.hasOwnProperty('bilhete_identidade'),
-        temLetras: dadosPaciente.bilhete_identidade ? /[A-Za-z]/.test(dadosPaciente.bilhete_identidade) : false
-      });
       
       // Garantir que campos obrigatórios estejam presentes
       const camposObrigatorios = ['nome', 'apelido', 'data_nascimento', 'genero', 'celular'];
@@ -215,23 +188,14 @@ const usePacientes = () => {
         console.error('❌ Campos obrigatórios faltando:', camposFaltando);
         throw new Error(`Campos obrigatórios estão faltando: ${camposFaltando.join(', ')}`);
       }
-      
-      console.log('✅ Todos os campos obrigatórios estão presentes');
-      console.log('✅ Campos obrigatórios verificados:', camposObrigatorios.map(campo => `${campo}: ${dadosBackend[campo]}`));
-
       // Verificar se temos token de autenticação
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('Token de autenticação não encontrado. Faça login novamente.');
       }
 
-      console.log('🔄 Enviando ao backend (snake_case):', dadosBackend);
-      console.log('🔑 Token presente:', !!token);
-      
       const response = await patientService.createPatient(dadosBackend);
-      
-      console.log('📥 Resposta do backend:', response);
-      
+
       // Verificar se houve erro de validação
       if (!response.success) {
         console.error('❌ Resposta de erro do backend:', response);
@@ -241,20 +205,11 @@ const usePacientes = () => {
           
           // RETRY AUTOMÁTICO para raca_id inválida
           if (response.errors.raca_id && dadosBackend._tentativasRaca && dadosBackend._tentativasRaca.length > 0) {
-            console.log('🔄 RETRY: Tentando próximo ID de raça...');
-            
+
             const proximoId = dadosBackend._tentativasRaca.shift();
             dadosBackend.raca_id = proximoId;
             
-            console.log('🔄 Nova tentativa com raca_id:', {
-              idAnterior: response.errors.raca_id,
-              novoId: proximoId,
-              tentativasRestantes: dadosBackend._tentativasRaca.length,
-              nomeRaca: dadosBackend._racaOriginal?.nome
-            });
-            
             // Tentar novamente
-            console.log('🔄 RECURSÃO: Chamando criarPaciente novamente...');
             return await criarPaciente(dadosBackend);
           }
           
@@ -278,10 +233,7 @@ const usePacientes = () => {
           throw new Error(errorMsg);
         }
       }
-      
-      const payload = response && response.success ? response.data : response;
-      console.log('✅ Paciente criado com sucesso:', payload);
-      
+            
       message.success('Paciente cadastrado com sucesso!');
 
       // Recarregar lista de pacientes
@@ -352,43 +304,10 @@ const usePacientes = () => {
         status: dadosPaciente.status,
       };
 
-      console.log('📤 Dados originais recebidos:', dadosPaciente);
-      console.log('📦 Dados transformados para backend:', dadosBackend);
-      
-      // 🔍 DEBUG CRÍTICO: Verificar campos específicos
-      console.log('🎯 CAMPOS CRÍTICOS ENVIADOS AO BACKEND:', {
-        tipo_utente_id: {
-          valor: dadosBackend.tipo_utente_id,
-          tipo: typeof dadosBackend.tipo_utente_id,
-          existe: 'tipo_utente_id' in dadosBackend,
-          isNull: dadosBackend.tipo_utente_id === null,
-          isUndefined: dadosBackend.tipo_utente_id === undefined
-        },
-        unidade_organica_id: {
-          valor: dadosBackend.unidade_organica_id,
-          tipo: typeof dadosBackend.unidade_organica_id,
-          existe: 'unidade_organica_id' in dadosBackend
-        },
-        dadosOriginais: {
-          'dadosPaciente.tipo_utente_id': dadosPaciente.tipo_utente_id,
-          'dadosPaciente.tipoUtenteId': dadosPaciente.tipoUtenteId,
-          'dadosPaciente.unidade_organica_id': dadosPaciente.unidade_organica_id,
-          'dadosPaciente.unidadeOrganicaId': dadosPaciente.unidadeOrganicaId
-        }
-      });
 
       const response = await patientService.updatePatient(id, dadosBackend);
       const payload = response && response.success ? response.data : response;
-      console.log('✅ Resposta do backend:', response);
-      console.log('📄 Payload do paciente atualizado:', payload);
-      
-      // 🔍 DEBUG: Verificar se os campos foram realmente atualizados no backend
-      console.log('🎯 VALORES RETORNADOS DO BACKEND:', {
-        'payload.tipo_utente_id': payload?.tipo_utente_id,
-        'payload.tipoUtenteId': payload?.tipoUtenteId,
-        'payload.unidade_organica_id': payload?.unidade_organica_id,
-        'payload.unidadeOrganicaId': payload?.unidadeOrganicaId
-      });
+
       
       if (response && response.success) {
         message.success(response.message || 'Paciente atualizado com sucesso!');
@@ -397,12 +316,6 @@ const usePacientes = () => {
         return null;
       }
 
-      // Recarregar lista de pacientes
-      console.log('🔄 Iniciando recarregamento da lista de pacientes...');
-      const pacientesAtualizados = await carregarPacientes();
-      console.log('✅ Lista recarregada com sucesso:', pacientesAtualizados?.length, 'pacientes');
-
-      return payload;
     } catch (err) {
       console.error('❌ Erro ao atualizar paciente:', {
         error: err,
@@ -411,9 +324,6 @@ const usePacientes = () => {
         status: err.response?.status
       });
       
-      const errorMessage = err.response?.data?.message || err.message || 'Erro ao atualizar paciente';
-      setError(errorMessage);
-      message.error(errorMessage);
       
       // Se houver erros de validação, mostrar detalhes
       if (err.response?.data?.errors) {
@@ -438,7 +348,6 @@ const usePacientes = () => {
 
     try {
   await patientService.deletePatient(id);
-  console.log('Paciente deletado:', id);
 
       message.success('Paciente removido com sucesso!');
 
@@ -466,7 +375,6 @@ const usePacientes = () => {
     try {
       const response = await patientService.searchPatients(searchTerm);
       const payload = response && response.success ? response.data : response;
-      console.log('Resultados da busca:', payload);
 
       // Normalizar dados
       const pacientesNormalizados = (payload || []).map(paciente => ({
@@ -505,21 +413,14 @@ const usePacientes = () => {
     // Verificar se tem token antes de carregar
     const token = localStorage.getItem('token');
     
-    console.log('🔄 usePacientes useEffect executado:', {
-      hasToken: !!token,
-      currentPacientes: pacientes.length
-    });
+
     
     if (token) {
       // Pequeno delay para garantir que tudo está pronto
       const timer = setTimeout(async () => {
-        console.log('🔄 Iniciando carregamento de pacientes do backend...');
-        const result = await carregarPacientes();
-        console.log('📊 Resultado do carregamento:', {
-          totalCarregados: result?.length || 0,
-          estadoAtual: pacientes.length
-        });
-      }, 500);
+        await carregarPacientes();
+        // Removido o console.log para não exibir no console
+      }, 300);
       
       return () => clearTimeout(timer);
     } else {

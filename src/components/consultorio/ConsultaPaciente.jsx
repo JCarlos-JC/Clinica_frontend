@@ -295,12 +295,19 @@ const Consultorio = () => {
 
   // Log para debug - ver se o filtro está funcionando
   useEffect(() => {
-    // ...existing code...
+    if (medicoId) {
+      console.log(`✅ Filtrando consultas para o médico ID: ${medicoId}`);
+    } else {
+      console.log('⚠️ Nenhum ID de médico encontrado - mostrando todas as consultas');
+    }
   }, [medicoId]);
 
   // Log para debug - ver dados recebidos
   useEffect(() => {
-    // ...existing code...
+    console.log('📊 Consultas Pendentes recebidas da API:', consultasPendentesAPI);
+    console.log('📊 Total de consultas pendentes:', consultasPendentesAPI?.length || 0);
+    console.log('📊 Pacientes Com Exames:', pacientesComExamesAPI);
+    console.log('📊 Loading Pendentes:', loadingPendentes);
   }, [consultasPendentesAPI, pacientesComExamesAPI, loadingPendentes]);
 
   // Atualizar a cada 30 segundos
@@ -585,44 +592,44 @@ const Consultorio = () => {
   };
 
   // Função para finalizar consulta rapidamente (sem abrir modal)
-  const handleFinalizarConsultaRapida = async (paciente) => {
-    try {
-      console.log('🔄 Finalizando consulta rapidamente para:', paciente);
+  // const handleFinalizarConsultaRapida = async (paciente) => {
+  //   try {
+  //     console.log('🔄 Finalizando consulta rapidamente para:', paciente);
       
-      const consultaId = paciente?.consulta_id || paciente?.agendamento_id || paciente?.id;
+  //     const consultaId = paciente?.consulta_id || paciente?.agendamento_id || paciente?.id;
       
-      if (!consultaId) {
-        message.error('ID da consulta não encontrado');
-        return;
-      }
+  //     if (!consultaId) {
+  //       message.error('ID da consulta não encontrado');
+  //       return;
+  //     }
 
-      // Preparar dados mínimos para finalização
-      const consultaData = {
-        paciente_id: paciente.paciente_id || paciente.id,
-        medico_id: medicoId,
-        status: 'finalizada',
-        diagnostico: 'Consulta finalizada',
-        recomendacoes: 'Acompanhamento conforme necessário',
-        especialidade: paciente.especialidade,
-      };
+  //     // Preparar dados mínimos para finalização
+  //     const consultaData = {
+  //       paciente_id: paciente.paciente_id || paciente.id,
+  //       medico_id: medicoId,
+  //       status: 'finalizada',
+  //       diagnostico: 'Consulta finalizada',
+  //       recomendacoes: 'Acompanhamento conforme necessário',
+  //       especialidade: paciente.especialidade,
+  //     };
 
-      console.log('📦 Enviando finalização para consulta ID:', consultaId);
+  //     console.log('📦 Enviando finalização para consulta ID:', consultaId);
       
-      await finalizarConsulta(consultaId, consultaData);
+  //     await finalizarConsulta(consultaId, consultaData);
 
-      // Atualizar listas
-      await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas()
-      ]);
+  //     // Atualizar listas
+  //     await Promise.all([
+  //       fetchConsultasPendentes(),
+  //       fetchConsultasRealizadas()
+  //     ]);
 
-      message.success(`Consulta de ${paciente.nome} finalizada com sucesso!`);
-      setActiveTab('2'); // Mudar para tab de realizadas
-    } catch (error) {
-      console.error('❌ Erro ao finalizar consulta:', error);
-      message.error('Erro ao finalizar consulta. Tente novamente.');
-    }
-  };
+  //     message.success(`Consulta de ${paciente.nome} finalizada com sucesso!`);
+  //     setActiveTab('2'); // Mudar para tab de realizadas
+  //   } catch (error) {
+  //     console.error('❌ Erro ao finalizar consulta:', error);
+  //     message.error('Erro ao finalizar consulta. Tente novamente.');
+  //   }
+  // };
 
   // Função para resetar paciente foi REMOVIDA
   // Reset agora é controlado centralmente pelo CadastroPaciente.jsx
@@ -1681,7 +1688,7 @@ const Consultorio = () => {
           >
             Consulta
           </Button>
-          <Button
+          {/* <Button
             type="primary"
             icon={<CheckCircleOutlined />}
             onClick={() => handleFinalizarConsultaRapida(record)}
@@ -1689,7 +1696,7 @@ const Consultorio = () => {
             style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
           >
             Finalizar
-          </Button>
+          </Button> */}
           <Space size="small">
             <Button
               type="default"
@@ -1737,9 +1744,16 @@ const Consultorio = () => {
         if (record.resultadosExames) {
           return (
             <div>
-              {Object.keys(record.resultadosExames).map((exame, idx) => (
-                <Tag color="green" key={idx}>{exame}</Tag>
-              ))}
+              {Object.entries(record.resultadosExames).map(([exame, valor], idx) => {
+                // If valor is an object with a 'nome' property, show that, else show exame name
+                let label = exame;
+                if (valor && typeof valor === 'object' && valor.nome) {
+                  label = valor.nome;
+                }
+                return (
+                  <Tag color="green" key={idx}>{label}</Tag>
+                );
+              })}
             </div>
           );
         }

@@ -313,7 +313,6 @@ const TemplateCards = () => {
     ];
 
     if (!currentUser) {
-      console.log('❌ Nenhum usuário encontrado'); // DEBUG
       return [];
     }
 
@@ -321,14 +320,9 @@ const TemplateCards = () => {
     const isAdmin = currentUser.tipo_usuario === 'admin' ||
       currentUser.roles?.includes('admin');
 
-    console.log('✅ Current user:', currentUser); // DEBUG
-    console.log('✅ User tipo_usuario:', currentUser.tipo_usuario); // DEBUG
-    console.log('✅ User roles:', currentUser.roles); // DEBUG
-    console.log('✅ Is admin:', isAdmin); // DEBUG
 
     // Admin vê todos os cards
     if (isAdmin) {
-      console.log('✅ ADMIN - Mostrando todos os', allCards.length, 'cards'); // DEBUG
       return allCards;
     }
 
@@ -343,12 +337,10 @@ const TemplateCards = () => {
 
     const userCardRole = roleMapping[currentUser.tipo_usuario] || currentUser.tipo_usuario;
 
-    console.log('✅ User card role mapeado:', userCardRole); // DEBUG
 
     // Filtrar cards baseado no role do usuário
     const filteredCards = allCards.filter(card => card.role === userCardRole);
 
-    console.log('✅ Cards filtrados:', filteredCards.length, filteredCards.map(c => c.title)); // DEBUG
 
     return filteredCards;
   }, [
@@ -362,12 +354,6 @@ const TemplateCards = () => {
   // ✅ Usar currentUser para exibir nome
   const displayUser = currentUser || user;
 
-  // ✅ Log para debug quando componente renderiza
-  useEffect(() => {
-    console.log('🔄 TemplateCards renderizado');
-    console.log('👤 Current User:', currentUser);
-    console.log('🎴 Cards disponíveis:', cardData.length);
-  }, [currentUser, cardData]);
 
   return (
     <Layout>

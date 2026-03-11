@@ -132,7 +132,6 @@ const CadastroPaciente = () => {
    */
   const handleProvinciaChange = async (provinciaId, form) => {
     try {
-      console.log('🌍 Província selecionada:', provinciaId);
       
       // Limpar distrito e bairro quando província mudar
       form.setFieldsValue({ distrito: undefined, bairro: undefined });
@@ -157,7 +156,6 @@ const CadastroPaciente = () => {
 
           const distritosData = response.data?.data || response.data || [];
           setPatientServiceDistritos(distritosData);
-          console.log('✅ Distritos carregados:', distritosData.length);
         } catch (error) {
           console.error('❌ Erro ao carregar distritos do Patient Service:', error);
           message.error('Erro ao carregar distritos');
@@ -175,7 +173,6 @@ const CadastroPaciente = () => {
    */
   const handleDistritoChange = async (distritoId, form) => {
     try {
-      console.log('🏘️ Distrito selecionado:', distritoId);
       
       // Limpar bairro quando distrito mudar
       form.setFieldsValue({ bairro: undefined });
@@ -199,7 +196,6 @@ const CadastroPaciente = () => {
 
           const bairrosData = response.data?.data || response.data || [];
           setPatientServiceBairros(bairrosData);
-          console.log('✅ Bairros carregados:', bairrosData.length);
         } catch (error) {
           console.error('❌ Erro ao carregar bairros do Patient Service:', error);
           message.error('Erro ao carregar bairros');
@@ -1085,193 +1081,192 @@ const CadastroPaciente = () => {
   };
 
   // Monitorar consultas realizadas para detectar ciclos terminados
-  React.useEffect(() => {
+  // React.useEffect(() => {
     
-    if (consultasRealizadas && consultasRealizadas.length > 0) {
+  //   if (consultasRealizadas && consultasRealizadas.length > 0) {
 
-      // Verificar as consultas que terminam o ciclo e que ainda não foram processadas
-      const consultasTerminadas = consultasRealizadas.filter(consulta => {
-        const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
+  //     // Verificar as consultas que terminam o ciclo e que ainda não foram processadas
+  //     const consultasTerminadas = consultasRealizadas.filter(consulta => {
+  //       const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
         
-        // Verificar se a consulta já foi processada
-        if (consultasProcessadas.has(consultaId)) {
-          return false;
-        }
+  //       // Verificar se a consulta já foi processada
+  //       if (consultasProcessadas.has(consultaId)) {
+  //         return false;
+  //       }
         
-        // Verificar se o paciente ainda está em processo de exames
-        const pacienteId = consulta.id || consulta.pacienteId;
+  //       // Verificar se o paciente ainda está em processo de exames
+  //       const pacienteId = consulta.id || consulta.pacienteId;
         
-        // CORREÇÃO: Verificar em triagensRealizadas se tem exames não consultados
-        const temExamesNaoConsultados = triagensRealizadas.some(t => 
-          (t.id === pacienteId || t.pacienteId === pacienteId) &&
-          t.status === 'exames_concluidos' &&
-          t.resultadosExames &&
-          !t.jaConsultado
-        );
+  //       // CORREÇÃO: Verificar em triagensRealizadas se tem exames não consultados
+  //       const temExamesNaoConsultados = triagensRealizadas.some(t => 
+  //         (t.id === pacienteId || t.pacienteId === pacienteId) &&
+  //         t.status === 'exames_concluidos' &&
+  //         t.resultadosExames &&
+  //         !t.jaConsultado
+  //       );
         
-        // CORREÇÃO 2: Se a consulta atual tem retornoComExames=true, significa que esta consulta
-        // é justamente para avaliar os resultados dos exames, então devemos permitir terminar o ciclo
-        if (temExamesNaoConsultados && !consulta.retornoComExames) {
-          return false;
-        }
+  //       // CORREÇÃO 2: Se a consulta atual tem retornoComExames=true, significa que esta consulta
+  //       // é justamente para avaliar os resultados dos exames, então devemos permitir terminar o ciclo
+  //       if (temExamesNaoConsultados && !consulta.retornoComExames) {
+  //         return false;
+  //       }
         
-        // Se a consulta é de retorno com exames, devemos atualizar os exames para jaConsultado=true
-        if (consulta.retornoComExames) {
-        }
+  //       // Se a consulta é de retorno com exames, devemos atualizar os exames para jaConsultado=true
+  //       if (consulta.retornoComExames) {
+  //       }
         
-        // Nova lógica: usar o campo deveTerminarCiclo enviado pelo ConsultaDetalhadaModal
-        // Se deveTerminarCiclo for explicitamente false, NÃO resetar o paciente
-        // Se não existir o campo, usar a lógica anterior como fallback
-        let deveFinalizar = false;
+  //       // Nova lógica: usar o campo deveTerminarCiclo enviado pelo ConsultaDetalhadaModal
+  //       // Se deveTerminarCiclo for explicitamente false, NÃO resetar o paciente
+  //       // Se não existir o campo, usar a lógica anterior como fallback
+  //       let deveFinalizar = false;
         
-        if (consulta.hasOwnProperty('deveTerminarCiclo')) {
-          // Nova lógica: usar o campo explícito do modal
-          // CORREÇÃO: Se for uma consulta de retorno com exames e tem prescrição, deve terminar o ciclo
-          if (consulta.retornoComExames && consulta.temPrescricao) {
-            deveFinalizar = true;
-          } else {
-            deveFinalizar = consulta.deveTerminarCiclo;
+  //       if (consulta.hasOwnProperty('deveTerminarCiclo')) {
+  //         // Nova lógica: usar o campo explícito do modal
+  //         // CORREÇÃO: Se for uma consulta de retorno com exames e tem prescrição, deve terminar o ciclo
+  //         if (consulta.retornoComExames && consulta.temPrescricao) {
+  //           deveFinalizar = true;
+  //         } else {
+  //           deveFinalizar = consulta.deveTerminarCiclo;
           
-            // Log específico para consultas que não terminam ciclo
-            if (consulta.deveTerminarCiclo === false) {
-            }
-          }
-        } else {
-          // Lógica anterior como fallback para consultas sem o novo campo
-          // CORREÇÃO: Verificar explicitamente se é um retorno com exames
-          if (consulta.retornoComExames && consulta.temPrescricao) {
-            deveFinalizar = true;
-          } else {
-            deveFinalizar = (
-              (consulta.status === 'alta' || 
-               consulta.status === 'obito' || 
-               consulta.status === 'transferido' ||
-               (consulta.status === 'finalizada' && (consulta.prescricoes?.length > 0 || consulta.dataAlta))
-              )
-            );
-          }
-        }
+  //           // Log específico para consultas que não terminam ciclo
+  //           if (consulta.deveTerminarCiclo === false) {
+  //           }
+  //         }
+  //       } else {
+  //         // Lógica anterior como fallback para consultas sem o novo campo
+  //         // CORREÇÃO: Verificar explicitamente se é um retorno com exames
+  //         if (consulta.retornoComExames && consulta.temPrescricao) {
+  //           deveFinalizar = true;
+  //         } else {
+  //           deveFinalizar = (
+  //             (consulta.status === 'alta' || 
+  //              consulta.status === 'obito' || 
+  //              consulta.status === 'transferido' ||
+  //              (consulta.status === 'finalizada' && (consulta.prescricoes?.length > 0 || consulta.dataAlta))
+  //             )
+  //           );
+  //         }
+  //       }
         
-        // Verificar se a consulta foi resultado de um retorno com exames
-        if (consulta.retornoComExames === true && deveFinalizar) {
-        }
+  //       // Verificar se a consulta foi resultado de um retorno com exames
+  //       if (consulta.retornoComExames === true && deveFinalizar) {
+  //       }
         
-        return deveFinalizar;
-      });
+  //       return deveFinalizar;
+  //     });
 
-      // Também precisamos processar consultas que foram finalizadas mas não terminaram o ciclo
-      // CORREÇÃO: Melhorar a detecção de consultas com ciclo aberto (incluindo exames pendentes)
-      const consultasComCicloAberto = consultasRealizadas.filter(consulta => {
-        const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
+  //     // Também precisamos processar consultas que foram finalizadas mas não terminaram o ciclo
+  //     // CORREÇÃO: Melhorar a detecção de consultas com ciclo aberto (incluindo exames pendentes)
+  //     const consultasComCicloAberto = consultasRealizadas.filter(consulta => {
+  //       const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
         
-        // Verificar várias condições possíveis para considerar como ciclo aberto
-        const comCicloAberto = (
-          // Condição original
-          (consulta.hasOwnProperty('deveTerminarCiclo') && consulta.deveTerminarCiclo === false && consulta.deveFinalizarConsulta === true) ||
-          // Consultas com exames pendentes
-          (consulta.aguardandoExames === true) ||
-          // Consultas com status específico de exames
-          (consulta.status === 'aguardando_exames' || consulta.status === 'finalizada_com_exames') ||
-          // Consultas que têm exames mas não têm prescrições
-          (consulta.temExames === true && consulta.temPrescricao !== true) ||
-          // Consultas com tipo de finalização específico para exames
-          (consulta.tipoFinalizacao === 'so_exames')
-        );
+  //       // Verificar várias condições possíveis para considerar como ciclo aberto
+  //       const comCicloAberto = (
+  //         // Condição original
+  //         (consulta.hasOwnProperty('deveTerminarCiclo') && consulta.deveTerminarCiclo === false && consulta.deveFinalizarConsulta === true) ||
+  //         // Consultas com exames pendentes
+  //         (consulta.aguardandoExames === true) ||
+  //         // Consultas com status específico de exames
+  //         (consulta.status === 'aguardando_exames' || consulta.status === 'finalizada_com_exames') ||
+  //         // Consultas que têm exames mas não têm prescrições
+  //         (consulta.temExames === true && consulta.temPrescricao !== true) ||
+  //         // Consultas com tipo de finalização específico para exames
+  //         (consulta.tipoFinalizacao === 'so_exames')
+  //       );
         
-        return comCicloAberto && !consultasProcessadas.has(consultaId);
-      });
+  //       return comCicloAberto && !consultasProcessadas.has(consultaId);
+  //     });
       
-      // CORREÇÃO: Adicionar log detalhado sobre pacientes com ciclo aberto
-      if (consultasComCicloAberto.length > 0) {
-      }
+  //     // CORREÇÃO: Adicionar log detalhado sobre pacientes com ciclo aberto
+  //     if (consultasComCicloAberto.length > 0) {
+  //     }
 
-      if (consultasTerminadas.length > 0) {
-        const novasConsultasProcessadas = new Set(consultasProcessadas);
+  //     if (consultasTerminadas.length > 0) {
+  //       const novasConsultasProcessadas = new Set(consultasProcessadas);
 
-        consultasTerminadas.forEach(consulta => {
-          // CORREÇÃO: Usar NID quando disponível como identificador primário
-          const nidConsulta = consulta.nid;
-          const pacienteId = consulta.id || consulta.pacienteId;
-          const consultaId = `${nidConsulta || pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
+  //       consultasTerminadas.forEach(consulta => {
+  //         // CORREÇÃO: Usar NID quando disponível como identificador primário
+  //         const nidConsulta = consulta.nid;
+  //         const pacienteId = consulta.id || consulta.pacienteId;
+  //         const consultaId = `${nidConsulta || pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
 
-          if (pacienteId || nidConsulta) {
-            // CORREÇÃO: Verificar se o paciente ainda não foi resetado (se ainda tem dados do ciclo anterior)
-            // Priorizar busca por NID, depois tentar por IDs numéricos
-            const pacienteAtual = pacientes.find(p => 
-              (nidConsulta && p.nid === nidConsulta) || 
-              p.id === pacienteId || 
-              p.pacienteId === pacienteId);
+  //         if (pacienteId || nidConsulta) {
+  //           // CORREÇÃO: Verificar se o paciente ainda não foi resetado (se ainda tem dados do ciclo anterior)
+  //           // Priorizar busca por NID, depois tentar por IDs numéricos
+  //           const pacienteAtual = pacientes.find(p => 
+  //             (nidConsulta && p.nid === nidConsulta) || 
+  //             p.id === pacienteId || 
+  //             p.pacienteId === pacienteId);
             
-            if (!pacienteAtual) {
-              // Log para diagnóstico - mostrar todos os pacientes com suas IDs para debugging
-            }
+  //           if (!pacienteAtual) {
+  //             // Log para diagnóstico - mostrar todos os pacientes com suas IDs para debugging
+  //           }
 
-            // Só resetar se paciente existe e está em ciclo ativo
-            if (pacienteAtual && pacienteAtual.statusPagamentoConsulta === 'pago') {
-              // Detectar se a consulta teve prescrição (para qualquer tipo de status)
-              const temPrescricaoDetected = consulta.temPrescricao || 
-                                          (consulta.prescricoes && consulta.prescricoes.length > 0) ||
-                                          consulta.dataAlta; // dataAlta indica que houve alta com tratamento
+  //           // Só resetar se paciente existe e está em ciclo ativo
+  //           if (pacienteAtual && pacienteAtual.statusPagamentoConsulta === 'pago') {
+  //             // Detectar se a consulta teve prescrição (para qualquer tipo de status)
+  //             const temPrescricaoDetected = consulta.temPrescricao || 
+  //                                         (consulta.prescricoes && consulta.prescricoes.length > 0) ||
+  //                                         consulta.dataAlta; // dataAlta indica que houve alta com tratamento
 
-              // Criar objeto de consulta padronizado para o reset
-              const consultaPadronizada = {
-                ...consulta,
-                temPrescricao: temPrescricaoDetected,
-                dataLimiteAcompanhamento: temPrescricaoDetected ? 
-                  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString() : null
-              };
+  //             // Criar objeto de consulta padronizado para o reset
+  //             const consultaPadronizada = {
+  //               ...consulta,
+  //               temPrescricao: temPrescricaoDetected,
+  //               dataLimiteAcompanhamento: temPrescricaoDetected ? 
+  //                 new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString() : null
+  //             };
 
-              // Resetar o paciente ao estado inicial (passando dados da consulta para acompanhamento)
-              resetarPacienteEstadoInicial(pacienteId, consulta.dataConsulta || consulta.dataFinalizacao, consultaPadronizada);
+  //             // Resetar o paciente ao estado inicial (passando dados da consulta para acompanhamento)
+  //             resetarPacienteEstadoInicial(pacienteId, consulta.dataConsulta || consulta.dataFinalizacao, consultaPadronizada);
 
-              // Mostrar mensagem informativa sobre a necessidade de novo pagamento
-              if (consulta.status === 'alta') {
-                const mensagemBase = `✅ Paciente ${consulta.nome} recebeu alta médica.`;
-                const mensagemAcompanhamento = consulta.temPrescricao ? 
-                  ' Consulta de acompanhamento disponível por 7 dias.' : '';
-                message.success(mensagemBase + mensagemAcompanhamento);
-              } else if (consulta.status === 'finalizada' && temPrescricaoDetected) {
-                const mensagemBase = `✅ Consulta finalizada para ${consulta.nome}.`;
-                const mensagemAcompanhamento = ' Consulta de acompanhamento disponível por 7 dias.';
-                message.success(mensagemBase + mensagemAcompanhamento);
-              } else if (consulta.status === 'obito') {
-                message.info(`📋 Óbito registrado para paciente ${consulta.nome}. Registro mantido para histórico médico.`);
-              } else if (consulta.status === 'transferido') {
-                message.success(`🏥 Paciente ${consulta.nome} transferido para outro hospital. Ciclo terminado - disponível para nova consulta (requer novo pagamento).`);
-              }
-            } else {
-            }
+  //             // Mostrar mensagem informativa sobre a necessidade de novo pagamento
+  //             if (consulta.status === 'alta') {
+  //               const mensagemBase = `✅ Paciente ${consulta.nome} recebeu alta médica.`;
+  //               const mensagemAcompanhamento = consulta.temPrescricao ? 
+  //                 ' Consulta de acompanhamento disponível por 7 dias.' : '';
+  //               message.success(mensagemBase + mensagemAcompanhamento);
+  //             } else if (consulta.status === 'finalizada' && temPrescricaoDetected) {
+  //               const mensagemBase = `✅ Consulta finalizada para ${consulta.nome}.`;
+  //               const mensagemAcompanhamento = ' Consulta de acompanhamento disponível por 7 dias.';
+  //               message.success(mensagemBase + mensagemAcompanhamento);
+  //             } else if (consulta.status === 'obito') {
+  //               message.info(`📋 Óbito registrado para paciente ${consulta.nome}. Registro mantido para histórico médico.`);
+  //             } else if (consulta.status === 'transferido') {
+  //               message.success(`🏥 Paciente ${consulta.nome} transferido para outro hospital. Ciclo terminado - disponível para nova consulta (requer novo pagamento).`);
+  //             }
+  //           } else {
+  //           }
 
-            // Marcar esta consulta como processada
-            novasConsultasProcessadas.add(consultaId);
-          }
-        });
+  //           // Marcar esta consulta como processada
+  //           novasConsultasProcessadas.add(consultaId);
+  //         }
+  //       });
 
-        // Atualizar o estado de consultas processadas
-        setConsultasProcessadas(novasConsultasProcessadas);
-      }
+  //       // Atualizar o estado de consultas processadas
+  //       setConsultasProcessadas(novasConsultasProcessadas);
+  //     }
 
-      // Processar consultas com ciclo aberto (apenas marcar como processadas)
-      if (consultasComCicloAberto.length > 0) {
-        const consultasParaMarcar = new Set(consultasProcessadas);
+  //     // Processar consultas com ciclo aberto (apenas marcar como processadas)
+  //     if (consultasComCicloAberto.length > 0) {
+  //       const consultasParaMarcar = new Set(consultasProcessadas);
         
-        consultasComCicloAberto.forEach(consulta => {
-          const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
+  //       consultasComCicloAberto.forEach(consulta => {
+  //         const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
           
-          // Mostrar mensagem informativa
-          message.info(`📋 Consulta de ${consulta.nome} finalizada com exames - paciente permanece disponível para prescrições.`);
+  //         // Mostrar mensagem informativa
+  //         message.info(`📋 Consulta de ${consulta.nome} finalizada com exames - paciente permanece disponível para prescrições.`);
           
-          // Marcar como processada
-          consultasParaMarcar.add(consultaId);
-        });
+  //         // Marcar como processada
+  //         consultasParaMarcar.add(consultaId);
+  //       });
         
-        setConsultasProcessadas(consultasParaMarcar);
-      }
-    }
-  }, [consultasRealizadas, consultasProcessadas]);
+  //       setConsultasProcessadas(consultasParaMarcar);
+  //     }
+  //   }
+  // }, [consultasRealizadas, consultasProcessadas]);
 
   const openEditModal = (paciente) => {
-    console.log('🔓 Abrindo modal de edição - dados originais do paciente:', paciente);
     setEditingPaciente(paciente);
     // Garantir que os campos de data sejam dayjs ou null
     const pacienteProcessado = {
@@ -1279,15 +1274,6 @@ const CadastroPaciente = () => {
       dataNascimento: getDayjsOrNull(paciente.dataNascimento),
       dataValidade: getDayjsOrNull(paciente.dataValidade)
     };
-
-    // Debug específico para o tipo de utente no modal de edição
-    console.log('🏷️ DEBUG tipoUtente no openEditModal:', {
-      'paciente.tipoUtenteId': paciente.tipoUtenteId,
-      'paciente.tipo_utente_id': paciente.tipo_utente_id,
-      'pacienteProcessado.tipoUtenteId': pacienteProcessado.tipoUtenteId,
-      'pacienteProcessado.tipo_utente_id': pacienteProcessado.tipo_utente_id,
-      'patientServiceTiposUtentes': patientServiceTiposUtentes?.length
-    });
 
     setCurrentPaciente(pacienteProcessado);
     setAcompanhanteStep(0);
@@ -1298,26 +1284,6 @@ const CadastroPaciente = () => {
   
   const handleCreate = async (values) => {
     try {
-      console.log('🚀 NOVA FUNÇÃO handleCreate sendo executada - TIMESTAMP:', new Date().toISOString());
-      console.log('📝 Valores do formulário recebidos:', values);
-      console.log('📋 Campos disponíveis:', Object.keys(values));
-      console.log('🏙️ VALORES DE LOCALIZAÇÃO RECEBIDOS:', {
-        provincia: values.provincia,
-        distrito: values.distrito,
-        bairro: values.bairro,
-        avenidaRuaCelula: values.avenidaRuaCelula,
-        numeroCasa: values.numeroCasa,
-        quarteirao: values.quarteirao
-      });
-      console.log('🎨 VALOR DA RAÇA RECEBIDO:', {
-        valor: values.raca,
-        tipo: typeof values.raca,
-        parseInt: parseInt(values.raca),
-        isNumber: !isNaN(values.raca)
-      });
-      
-      // 🔥 CARREGAR CONFIGURAÇÕES DIRETAMENTE DAS ROTAS INDIVIDUAIS DO BACKEND
-      console.log('📞 Carregando configurações das rotas individuais...');
       let configBackend = null;
       try {
         const token = localStorage.getItem('token');
@@ -1552,11 +1518,6 @@ const CadastroPaciente = () => {
       });
       
       // � NOVA ABORDAGEM: Usar configurações já carregadas do Configuration Service (porta 8004)
-      console.log('📋 Usando configurações de referência do Patient Service (porta 8002):', { 
-        patientServiceRacas: patientServiceRacas.length, 
-        patientServiceTiposUtentes: patientServiceTiposUtentes.length, 
-        patientServiceTiposDocumentos: patientServiceTiposDocumentos.length 
-      });
       
       // Verificar se as configurações estão carregadas
       if (loadingConfiguracoes) {
@@ -1570,12 +1531,6 @@ const CadastroPaciente = () => {
       // Log já feito acima com as configurações do backend
       
       // ==================== VALIDAÇÃO DE RAÇA (OBRIGATÓRIA E CRÍTICA) ====================
-      console.log('🎨 VALIDAÇÃO DE RAÇA - INÍCIO:', {
-        valorRecebido: values.raca,
-        tipoValor: typeof values.raca,
-        racasDoBackend: racasValidasBackend?.map(r => ({id: r.id, nome: r.nome, codigo: r.codigo})) || [],
-        totalRacasBackend: racasValidasBackend?.length || 0
-      });
       
       // Verificar se raça foi fornecida
       if (!values.raca) {
@@ -1591,17 +1546,9 @@ const CadastroPaciente = () => {
         // Buscar raça exata no backend
         const racaExiste = racasValidasBackend?.find(r => r.id === racaId);
         
-        console.log('🔍 VALIDAÇÃO DE RAÇA (Backend Direto - ID):', {
-          valorOriginal: values.raca,
-          racaId,
-          racaEncontrada: racaExiste,
-          totalRacasValidas: racasValidasBackend?.length,
-          racasDisponiveis: racasValidasBackend?.map(r => ({id: r.id, nome: r.nome}))
-        });
         
         if (racaExiste) {
           dadosPaciente.raca_id = racaId;
-          console.log('✅ RAÇA VALIDADA NO BACKEND:', racaExiste);
         } else {
           // Se não encontrou por ID, mostrar erro detalhado
           console.error('❌ RAÇA INVÁLIDA - ID não encontrado no backend');
@@ -1613,7 +1560,6 @@ const CadastroPaciente = () => {
         }
       } else {
         // Se não é número, tentar buscar por nome
-        console.log('🔍 Tentando encontrar raça por nome/string:', values.raca);
         
         const racaPorNome = racasValidasBackend?.find(r => 
           r.nome?.toLowerCase() === String(values.raca).toLowerCase() ||
@@ -1622,7 +1568,6 @@ const CadastroPaciente = () => {
         
         if (racaPorNome) {
           dadosPaciente.raca_id = racaPorNome.id;
-          console.log('✅ RAÇA ENCONTRADA POR NOME:', racaPorNome);
         } else {
           console.error('❌ RAÇA INVÁLIDA - Não encontrada por nome');
           console.error('❌ Nome procurado:', values.raca);
@@ -1634,23 +1579,15 @@ const CadastroPaciente = () => {
       }
       
       // ==================== VALIDAÇÃO DE TIPO UTENTE COM DADOS DO BACKEND ====================
-      console.log('👤 VALIDAÇÃO DE TIPO UTENTE:', {
-        tipoUtenteId,
-        tipoValor: typeof tipoUtenteId,
-        valuesOriginal: values.tipoUtente,
-        isNumber: !isNaN(tipoUtenteId),
-        tiposDisponiveisBackend: tiposUtentesValidosBackend?.map(t => ({id: t.id, nome: t.nome})) || []
-      });
+
       
       if (tipoUtenteId && !isNaN(tipoUtenteId)) {
         const tipoUtenteExiste = tiposUtentesValidosBackend?.find(t => t.id === parseInt(tipoUtenteId));
         if (tipoUtenteExiste) {
           dadosPaciente.tipo_utente_id = parseInt(tipoUtenteId);
-          console.log('✅ TIPO UTENTE VALIDADO NO BACKEND:', tipoUtenteExiste);
         } else {
           console.warn('⚠️ TIPO UTENTE não encontrado no backend, usando fallback');
           dadosPaciente.tipo_utente_id = tiposUtentesValidosBackend[0]?.id || 1;
-          console.log('⚠️ Usando tipo utente fallback:', dadosPaciente.tipo_utente_id);
         }
       } else {
         console.warn('⚠️ TIPO UTENTE NÃO FORNECIDO - campo vazio ou inválido');
@@ -1663,7 +1600,6 @@ const CadastroPaciente = () => {
         const unidadeExiste = unidadesOrganicasValidasBackend?.find(u => u.id === parseInt(values.unidadeOrganica));
         if (unidadeExiste) {
           dadosPaciente.unidade_organica_id = parseInt(values.unidadeOrganica);
-          console.log('✅ UNIDADE ORGÂNICA VALIDADA NO BACKEND:', unidadeExiste);
         } else {
           console.warn('⚠️ UNIDADE ORGÂNICA não encontrada, usando fallback');
           dadosPaciente.unidade_organica_id = unidadesOrganicasValidasBackend[0]?.id || 1;
@@ -1675,7 +1611,6 @@ const CadastroPaciente = () => {
         const tipoDocExiste = tiposDocumentoValidosBackend?.find(d => d.id === parseInt(values.tipoDocumento));
         if (tipoDocExiste) {
           dadosPaciente.tipo_documento_id = parseInt(values.tipoDocumento);
-          console.log('✅ TIPO DOCUMENTO VALIDADO NO BACKEND:', tipoDocExiste);
         } else {
           console.warn('⚠️ TIPO DOCUMENTO não encontrado, ignorando campo');
           // Não adicionar tipo_documento_id se não for válido
@@ -1699,31 +1634,21 @@ const CadastroPaciente = () => {
       if (values.provincia) {
         if (!isNaN(values.provincia)) {
           dadosPaciente.provincia_id = parseInt(values.provincia);
-          console.log('✅ Província (ID):', dadosPaciente.provincia_id);
         } else {
           // Se for string, enviar como está para o backend processar
           dadosPaciente.provincia = values.provincia;
-          console.log('✅ Província (String):', dadosPaciente.provincia);
         }
       }
       
-      console.log('🏙️ DEBUG DISTRITO E BAIRRO:', {
-        'values.distrito': values.distrito,
-        'values.bairro': values.bairro,
-        'distrito isNumber': !isNaN(values.distrito),
-        'bairro isNumber': !isNaN(values.bairro)
-      });
       
       if (values.distrito && !isNaN(values.distrito)) {
         dadosPaciente.distrito_id = parseInt(values.distrito);
-        console.log('✅ Distrito ID configurado:', dadosPaciente.distrito_id);
       } else {
         console.warn('⚠️ Distrito NÃO foi configurado:', values.distrito);
       }
       
       if (values.bairro && !isNaN(values.bairro)) {
         dadosPaciente.bairro_id = parseInt(values.bairro);
-        console.log('✅ Bairro ID configurado:', dadosPaciente.bairro_id);
       } else {
         console.warn('⚠️ Bairro NÃO foi configurado:', values.bairro);
       }
@@ -1756,52 +1681,9 @@ const CadastroPaciente = () => {
       // Não é necessário adicionar campos em camelCase - apenas snake_case para o Laravel
       // Status padrão já está definido acima
       
-      console.log('📤 Dados preparados para envio ao hook (TODOS EM snake_case):', dadosPaciente);
-      console.log('🏙️ VERIFICAÇÃO FINAL DE LOCALIZAÇÃO:', {
-        'provincia_id': dadosPaciente.provincia_id,
-        'distrito_id': dadosPaciente.distrito_id,
-        'bairro_id': dadosPaciente.bairro_id,
-        'avenida_rua_celula': dadosPaciente.avenida_rua_celula,
-        'numero_casa': dadosPaciente.numero_casa,
-        'quarteirao': dadosPaciente.quarteirao,
-        'VALORES ORIGINAIS do form': {
-          provincia: values.provincia,
-          distrito: values.distrito,
-          bairro: values.bairro
-        }
-      });
-      console.log('🔍 VALIDAÇÃO SNAKE_CASE - Todos os campos:', {
-        'Campos com underscores (correto)': Object.keys(dadosPaciente).filter(k => k.includes('_')),
-        'Campos sem underscores': Object.keys(dadosPaciente).filter(k => !k.includes('_')),
-        'Total de campos': Object.keys(dadosPaciente).length,
-        'Campos obrigatórios': {
-          nome: !!dadosPaciente.nome,
-          apelido: !!dadosPaciente.apelido,
-          data_nascimento: !!dadosPaciente.data_nascimento,
-          genero: !!dadosPaciente.genero,
-          celular: !!dadosPaciente.celular,
-          tipo_utente_id: !!dadosPaciente.tipo_utente_id
-        }
-      });
-      
-      // Debug: Verificar todos os campos obrigatórios (snake_case)
-      console.log('🔍 Verificação de campos obrigatórios:', {
-        nome: dadosPaciente.nome,
-        apelido: dadosPaciente.apelido,
-        data_nascimento: dadosPaciente.data_nascimento,
-        genero: dadosPaciente.genero,
-        celular: dadosPaciente.celular,
-        bilhete_identidade: dadosPaciente.bilhete_identidade
-      });
 
-      // Debug: Verificar IDs de referência
-      console.log('🔗 IDs de referência:', {
-        tipoUtenteId: tipoUtenteId,
-        unidadeOrganica: values.unidadeOrganica,
-        raca: values.raca,
-        tipoDocumento: values.tipoDocumento,
-        provincia: values.provincia
-      });
+
+
 
       // Testar conectividade com o backend
       const token = localStorage.getItem('token');
@@ -1831,29 +1713,9 @@ const CadastroPaciente = () => {
         return;
       }
 
-      console.log('📋 DADOS FINAIS VALIDADOS PARA BACKEND:', {
-        ...dadosPaciente,
-        validacaoOrigem: 'Serviço de Pacientes Direto',
-        timestampValidacao: new Date().toISOString(),
-        configuracaoUsada: {
-          racasCount: racasValidasBackend?.length || 0,
-          tiposUtentesCount: tiposUtentesValidosBackend?.length || 0,
-          unidadesCount: unidadesOrganicasValidasBackend?.length || 0,
-          tiposDocumentoCount: tiposDocumentoValidosBackend?.length || 0
-        }
-      });
       
-      console.log('🔍 VERIFICAÇÃO CRÍTICA - raca_id antes de enviar:', {
-        raca_id: dadosPaciente.raca_id,
-        tipo: typeof dadosPaciente.raca_id,
-        isNumber: !isNaN(dadosPaciente.raca_id),
-        valorOriginalFormulario: values.raca,
-        todosOsCampos: Object.keys(dadosPaciente),
-        objetoCompleto: JSON.stringify(dadosPaciente)
-      });
       
       // SOLUÇÃO: Mapear do Patient Service ID para o nome e tentar outros IDs
-      console.log('🔧 APLICANDO SOLUÇÃO: Mapeamento automático de raças');
       
       const racaAtual = racasValidasBackend?.find(r => r.id === values.raca);
       if (racaAtual) {
@@ -1874,18 +1736,12 @@ const CadastroPaciente = () => {
         };
         
         const possiveisIds = mapeamentoRacas[racaAtual.nome] || [0, 1, 2];
-        console.log('🎯 Tentativas de IDs para ' + racaAtual.nome + ':', possiveisIds);
         
         // Usar o primeiro ID como padrão, mas preparar para tentativas
         dadosPaciente.raca_id = possiveisIds[0];
         dadosPaciente._racaOriginal = racaAtual;
         dadosPaciente._tentativasRaca = possiveisIds.slice(1);
-        
-        console.log('✅ Raça configurada:', {
-          nome: racaAtual.nome,
-          idEscolhido: dadosPaciente.raca_id,
-          backupIds: dadosPaciente._tentativasRaca
-        });
+
       } else {
         console.error('❌ Raça não encontrada no Patient Service!');
       }
@@ -1899,20 +1755,7 @@ const CadastroPaciente = () => {
         // 🆔 Exibir o NID gerado pelo backend
         const nidGerado = resultado.nid || resultado.NID || 'N/A';
         console.log('✅ SUCESSO: Paciente criado com NID:', nidGerado);
-        console.log('📋 DADOS COMPLETOS DO PACIENTE CRIADO:', {
-          id: resultado.id,
-          nid: resultado.nid,
-          nome: resultado.nome,
-          raca_id: resultado.raca_id,
-          racaId: resultado.racaId,
-          distrito_id: resultado.distrito_id,
-          distritoId: resultado.distritoId,
-          bairro_id: resultado.bairro_id,
-          bairroId: resultado.bairroId,
-          tipo_utente_id: resultado.tipo_utente_id,
-          tipoUtenteId: resultado.tipoUtenteId,
-          todosOsCampos: Object.keys(resultado)
-        });
+
         
         message.success({
           content: (
@@ -2023,11 +1866,6 @@ const CadastroPaciente = () => {
         };
         
         pacienteComTipoUtente.tipoUtente = codigoParaTipoUtente[tipoUtenteObj.codigo] || tipoUtenteObj.nome || 'comunidade';
-        console.log('🔍 Convertendo tipo utente para pagamento especialidade:', {
-          tipoUtenteId: paciente.tipoUtenteId,
-          tipoUtenteObj,
-          tipoUtenteResultante: pacienteComTipoUtente.tipoUtente
-        });
       } else {
         // Fallback: mapeamento direto por ID
         const idParaTipoUtente = {
@@ -2096,14 +1934,7 @@ const CadastroPaciente = () => {
         setMetodosPagamento([]);
       }
       
-      console.log('💰 Abrindo modal de pagamento para paciente:', {
-        id: paciente.id,
-        nid: paciente.nid,
-        nome: paciente.nome,
-        tipoUtenteId: paciente.tipoUtenteId,
-        tiposConsultaLength: tiposConsulta?.length,
-        metodosPagamentoLength: metodosPagamento?.length
-      });
+
       
       // Carregar dados de pagamento do backend
       const token = localStorage.getItem('token');
@@ -2125,7 +1956,6 @@ const CadastroPaciente = () => {
       }
       
       const url = `http://localhost:8002/api/pacientes/nid/${numero}/${ano}/dados-pagamento`;
-      console.log('🔗 Fazendo requisição para:', url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -2135,11 +1965,6 @@ const CadastroPaciente = () => {
         }
       });
 
-      console.log('📡 Resposta do servidor:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
 
       if (!response.ok) {
         // Tentar obter mais detalhes do erro
@@ -2156,7 +1981,6 @@ const CadastroPaciente = () => {
       }
 
       const dadosPagamento = await response.json();
-      console.log('📊 Dados de pagamento carregados:', dadosPagamento);
 
       // Configurar dados do paciente com informações do backend
       const pacienteComDadosPagamento = {
@@ -2181,12 +2005,7 @@ const CadastroPaciente = () => {
                                 'consulta_geral';
       const tipoUtenteId = dadosPagamento.dados_paciente?.tipo_utente?.id || paciente.tipoUtenteId;
       
-      console.log('🏥 Configurando valores iniciais do formulário:', {
-        isEstudanteBolseiro,
-        tipoConsultaDefault,
-        tipoUtenteId,
-        valorDefault: dadosPagamento.configuracao?.valor_consulta_default
-      });
+
       
       // Definir método padrão baseado no tipo de utente
       const metodoPagamentoDefault = isEstudanteBolseiro ? 'isencao' : (metodosPagamento.length > 0 ? null : null);
@@ -2208,7 +2027,6 @@ const CadastroPaciente = () => {
         // Buscar valor específico para o tipo de consulta e utente
         try {
           const valorInicial = await buscarValorConsulta(tipoConsultaDefault, tipoUtenteId);
-          console.log('💰 Valor inicial calculado automaticamente:', valorInicial);
         
           // Validar se o valor foi carregado corretamente
           if (validarValorBackend(valorInicial, tipoConsultaDefault, tipoUtenteId, metodoPagamentoDefault)) {
@@ -2315,12 +2133,7 @@ const CadastroPaciente = () => {
           };
           
           pacienteComTipoUtente.tipoUtente = codigoParaTipoUtente[tipoUtenteObj.codigo] || tipoUtenteObj.nome || 'comunidade';
-          console.log('🔄 Tipo de utente mapeado (fallback):', {
-            id: paciente.tipoUtenteId,
-            codigo: tipoUtenteObj.codigo,
-            nome: tipoUtenteObj.nome,
-            resultado: pacienteComTipoUtente.tipoUtente
-          });
+
         } else {
           console.warn('⚠️ Tipo de utente não encontrado no Patient Service (fallback):', paciente.tipoUtenteId);
           pacienteComTipoUtente.tipoUtente = 'comunidade'; // Valor padrão
@@ -2357,7 +2170,6 @@ const CadastroPaciente = () => {
           if (tipoConsultaDefault && paciente.tipoUtenteId) {
             try {
               valorInicial = await buscarValorConsulta(tipoConsultaDefault, paciente.tipoUtenteId);
-              console.log('💰 Valor calculado automaticamente no fallback:', valorInicial);
             } catch (error) {
               console.warn('⚠️ Erro ao calcular valor no fallback:', error.message);
               
@@ -2464,7 +2276,6 @@ const CadastroPaciente = () => {
   // Função para processar o pagamento da consulta regular
   const processarPagamentoRegular = async (values) => {
     try {
-      console.log('💰 Processando pagamento:', { pacienteId: pacientePagamentoRegular?.id, values });
       
       // Validar dados do paciente primeiro
       if (!pacientePagamentoRegular?.tipoUtenteId) {
@@ -2488,11 +2299,7 @@ const CadastroPaciente = () => {
 
       // Obter tipo de utente do paciente
       const tipoUtenteId = obterTipoUtenteCodigoPorId(pacientePagamentoRegular?.tipoUtenteId);
-      console.log('🏷️ Tipo de utente do paciente:', { 
-        pacienteId: pacientePagamentoRegular?.id,
-        tipoUtenteId: pacientePagamentoRegular?.tipoUtenteId,
-        codigoUtente: tipoUtenteId 
-      });
+
 
       // Validar se o tipo de utente foi encontrado
       if (!tipoUtenteId) {
@@ -2504,15 +2311,7 @@ const CadastroPaciente = () => {
       // Preparar dados para envio ao backend
       const metodoPagamentoIsencao = isMetodoIsencao(values.metodoPagamento, pacientePagamentoRegular?.tipoUtenteId);
       
-      console.log('🔍 Debug detalhado da isenção:', {
-        'values.metodoPagamento': values.metodoPagamento,
-        'tipoUtenteId': pacientePagamentoRegular?.tipoUtenteId,
-        'isEstudanteBolseiro': pacientePagamentoRegular?.tipoUtenteId === 2,
-        'metodoPagamentoIsencao': metodoPagamentoIsencao,
-        'valorOriginal': values.valor,
-        'valorFinal': metodoPagamentoIsencao ? 0 : (parseFloat(values.valor) || 0)
-      });
-      
+
       // Encontrar o ID do método de pagamento selecionado
       let metodoPagamentoId = null;
       
@@ -2551,14 +2350,7 @@ const CadastroPaciente = () => {
         metodoPagamentoId = dinheiroObj?.id || 2; // 2 como fallback para dinheiro
       }
       
-      console.log('🆔 Debug método de pagamento ID:', {
-        'values.metodoPagamento': values.metodoPagamento,
-        'metodoPagamentoObj': metodosPagamento.find(metodo => 
-          metodo.codigo === values.metodoPagamento || metodo.id === values.metodoPagamento
-        ),
-        'metodoPagamentoId': metodoPagamentoId,
-        'metodosPagamento': metodosPagamento
-      });
+
       
       // Encontrar o ID do tipo de consulta
       let tipoConsultaId = null;
@@ -2587,14 +2379,6 @@ const CadastroPaciente = () => {
         tipoConsultaId = consultaGeralObj?.id || 1; // 1 como fallback
       }
       
-      console.log('🆔 Debug tipo de consulta ID:', {
-        'values.tipoConsulta': values.tipoConsulta,
-        'tipoConsultaObj': tiposConsulta.find(tipo => 
-          tipo.codigo === values.tipoConsulta || tipo.id === values.tipoConsulta
-        ),
-        'tipoConsultaId': tipoConsultaId,
-        'tiposConsulta': tiposConsulta
-      });
       
       const dadosPagamento = {
         tipo_consulta_id: parseInt(tipoConsultaId) || null,
@@ -2632,13 +2416,6 @@ const CadastroPaciente = () => {
 
       console.log('📤 Enviando dados de pagamento:', dadosPagamento);
       
-      // Log detalhado dos dados do paciente para debug
-      console.log('👤 Dados completos do paciente:', {
-        id: pacientePagamentoRegular.id,
-        nid: pacientePagamentoRegular.nid,
-        tipoUtenteId: pacientePagamentoRegular.tipoUtenteId,
-        nome: pacientePagamentoRegular.nome || pacientePagamentoRegular.primeiroNome
-      });
 
       // Preparar dados completos para a rota de pagamento
       const dadosPagamentoCompletos = {
@@ -2647,11 +2424,9 @@ const CadastroPaciente = () => {
         paciente_id: pacientePagamentoRegular.id
       };
 
-      console.log('📦 Payload completo que será enviado:', JSON.stringify(dadosPagamentoCompletos, null, 2));
 
       const url = 'http://localhost:8002/api/pacientes/processar-pagamento';
 
-      console.log('💳 Usando rota de pagamento:', url);
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -2992,12 +2767,7 @@ const CadastroPaciente = () => {
         return;
       }
 
-      console.log('💳 Processando pagamento de especialidade:', {
-        paciente: pacientePagamento.nome,
-        nid: pacientePagamento.nid,
-        especialidade: pacientePagamento.especialidade,
-        valores: values
-      });
+ 
 
       // Payload conforme documentação - POST /api/pacientes/pagamento-especialidade (Patient Service - 8002)
       const payload = {
@@ -3012,7 +2782,6 @@ const CadastroPaciente = () => {
         observacoes: values.observacoes || null
       };
 
-      console.log('📦 Payload completo para pagamento especialidade:', JSON.stringify(payload, null, 2));
 
       const response = await axios.post(
         'http://127.0.0.1:8002/api/services/pagamento-especialidade',
@@ -3041,13 +2810,11 @@ const CadastroPaciente = () => {
       
       // Segunda atualização após 1 segundo
       setTimeout(async () => {
-        console.log('🔄 Segunda atualização da lista de transferidos...');
         await carregarPacientesTransferidosEspecialidade();
       }, 1000);
       
       // Terceira atualização após 2 segundos (para garantir)
       setTimeout(async () => {
-        console.log('🔄 Terceira atualização da lista de transferidos...');
         await carregarPacientesTransferidosEspecialidade();
       }, 2000);
       setPacientePagamento(null);
@@ -3071,13 +2838,7 @@ const CadastroPaciente = () => {
 
   const handleEdit = async (values) => {
     try {
-      console.log('🚀 handleEdit iniciado - valores recebidos do formulário:', {
-        valuesCompletos: values,
-        tipoUtenteValue: values.tipoUtente,
-        tipoTipoUtente: typeof values.tipoUtente,
-        allFields: Object.keys(values),
-        fieldsComUtente: Object.keys(values).filter(k => k.toLowerCase().includes('utente'))
-      });
+
       
       // Convertendo o objeto dayjs para Date antes de salvar
       const processedValues = { ...values };
@@ -3090,24 +2851,13 @@ const CadastroPaciente = () => {
       
       // Número de documento (BI) - IGUAL AOS UTENTES AUTÔNOMOS
       if (processedValues.bilheteIdentidade) {
-        console.log('🆔 DEBUG EDIT BILHETE:', {
-          valor: processedValues.bilheteIdentidade,
-          tipo: typeof processedValues.bilheteIdentidade,
-          temLetras: /[A-Za-z]/.test(processedValues.bilheteIdentidade)
-        });
+
         
         camposConvertidos.bilhete_identidade = processedValues.bilheteIdentidade.trim();
-        console.log('✅ EDIT BILHETE MAPEADO:', camposConvertidos.bilhete_identidade);
       }
       
       // ==================== VALIDAÇÃO ROBUSTA TIPO UTENTE (MESMO PADRÃO DO HANDLECREATE) ====================
-      console.log('👤 VALIDAÇÃO ROBUSTA DE TIPO UTENTE NO EDIT:', {
-        tipoUtente: processedValues.tipoUtente,
-        tipoValor: typeof processedValues.tipoUtente,
-        isNumber: !isNaN(processedValues.tipoUtente),
-        patientServiceTiposUtentesLength: patientServiceTiposUtentes?.length || 0,
-        tiposDisponiveis: patientServiceTiposUtentes?.map(t => ({id: t.id, nome: t.nome})) || []
-      });
+
       
       if (processedValues.tipoUtente !== undefined) {
         let tipoUtenteId = processedValues.tipoUtente;
@@ -3128,7 +2878,6 @@ const CadastroPaciente = () => {
             'comunidade': 11
           };
           tipoUtenteId = mapeamentoTipoUtente[processedValues.tipoUtente];
-          console.log(`🔄 EDIT: Convertendo tipoUtente "${processedValues.tipoUtente}" para ID: ${tipoUtenteId}`);
         }
         
         // Validar se existe no backend (mesmo padrão do handleCreate)
@@ -3136,11 +2885,9 @@ const CadastroPaciente = () => {
           const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => t.id === parseInt(tipoUtenteId));
           if (tipoUtenteExiste) {
             camposConvertidos.tipo_utente_id = parseInt(tipoUtenteId, 10);
-            console.log('✅ EDIT: TIPO UTENTE VALIDADO NO BACKEND:', tipoUtenteExiste);
           } else {
             console.warn('⚠️ EDIT: TIPO UTENTE não encontrado no backend, usando fallback');
             camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
-            console.log('⚠️ EDIT: Usando tipo utente fallback:', camposConvertidos.tipo_utente_id);
           }
         } else {
           console.warn('⚠️ EDIT: TIPO UTENTE NÃO FORNECIDO ou inválido - mantendo valor original');
@@ -3182,41 +2929,11 @@ const CadastroPaciente = () => {
 
       // Mesclar dados existentes com valores processados e convertidos
       const dadosMesclados = { ...editingPaciente, ...processedValues, ...camposConvertidos };
-      
-      console.log('🔄 Atualizando paciente (handleEdit):', {
-        pacienteId: editingPaciente.id,
-        valoresOriginais: values,
-        valoresProcessados: processedValues,
-        camposConvertidos,
-        dadosMesclados,
-        // CRÍTICO: Verificar ordem de prioridade dos campos convertidos
-        prioridadeTipoUtente: {
-          'editingPaciente.tipoUtenteId (ANTIGO)': editingPaciente.tipoUtenteId,
-          'editingPaciente.tipo_utente_id (ANTIGO)': editingPaciente.tipo_utente_id,
-          'camposConvertidos.tipo_utente_id (NOVO)': camposConvertidos.tipo_utente_id,
-          'dadosMesclados.tipo_utente_id (FINAL)': dadosMesclados.tipo_utente_id,
-          'dadosMesclados.tipoUtenteId (FINAL camelCase)': dadosMesclados.tipoUtenteId
-        }
-      });
 
-      // Debug específico para tipo de utente
-      console.log('🏷️ Debug específico do tipo de utente:', {
-        'values.tipoUtente': values.tipoUtente,
-        'processedValues.tipoUtente': processedValues.tipoUtente,
-        'camposConvertidos.tipo_utente_id': camposConvertidos.tipo_utente_id,
-        'camposConvertidos.tipoUtenteId': camposConvertidos.tipoUtenteId,
-        'editingPaciente.tipoUtenteId': editingPaciente.tipoUtenteId,
-        'editingPaciente.tipo_utente_id': editingPaciente.tipo_utente_id,
-        'dadosMesclados.tipo_utente_id': dadosMesclados.tipo_utente_id,
-        'dadosMesclados.tipoUtenteId': dadosMesclados.tipoUtenteId,
-        'patientServiceTiposUtentes': patientServiceTiposUtentes?.length,
-        'tipoUtenteObj': patientServiceTiposUtentes?.find(t => t.id === parseInt(values.tipoUtente))
-      });
 
-      console.log('📤 Dados finais enviados para atualizarPaciente:', {
-        id: editingPaciente.id,
-        dadosMesclados: JSON.stringify(dadosMesclados, null, 2)
-      });
+
+
+
 
       // Atualiza no backend
       await atualizarPaciente(editingPaciente.id, dadosMesclados);
@@ -3304,9 +3021,6 @@ const CadastroPaciente = () => {
       try {
         const url = 'http://127.0.0.1:8002/api/solicitacoes-triagem';
         console.log('📨 Enviando solicitação de triagem:');
-        console.log('   - URL:', url);
-        console.log('   - Payload:', JSON.stringify(payload, null, 2));
-        console.log('   - Token:', token ? '✓ presente' : '✗ ausente');
 
         const res = await fetch(url, {
           method: 'POST',
@@ -3455,7 +3169,6 @@ const CadastroPaciente = () => {
     dataIndex: 'tipoUtenteId', 
     key: 'tipoUtente',
     render: (tipoUtenteId, record) => {
-      console.log('🔍 Renderizando tipo utente:', { tipoUtenteId, record: record?.nome, patientServiceTiposUtentes: patientServiceTiposUtentes?.length });
       
       // Se não tem ID, mostrar N/A
       if (!tipoUtenteId) {
@@ -3466,7 +3179,6 @@ const CadastroPaciente = () => {
       const tipoUtente = patientServiceTiposUtentes?.find(tipo => tipo.id === tipoUtenteId);
       
       if (tipoUtente) {
-        console.log('✅ Tipo utente encontrado:', tipoUtente);
         return tipoUtente.nome || tipoUtente.sigla || 'Tipo Desconhecido';
       }
 
@@ -3862,60 +3574,58 @@ const CadastroPaciente = () => {
   // Carregar parentes quando abrir o modal
   useEffect(() => {
     if (isAcompanhanteModalVisible && currentPaciente?.nid) {
-      console.log('🔄 Carregando parentes do paciente:', currentPaciente.nid);
       carregarParentes(currentPaciente.nid);
     }
   }, [isAcompanhanteModalVisible, currentPaciente?.nid, carregarParentes]);
   
   // Função para abrir o modal de acompanhantes
   const openAcompanhanteModal = (paciente) => {
-    console.log('🔓 Abrindo modal de dados adicionais - DADOS ORIGINAIS:', paciente);
-    console.log('📋 Campos disponíveis no paciente:', Object.keys(paciente));
+
     
-    // Log detalhado dos campos importantes
-    console.log('🎯 Análise de campos específicos:', {
-      // Identificação
-      id: paciente.id,
-      nid: paciente.nid,
-      nome: paciente.nome,
-      apelido: paciente.apelido,
+    // // Log detalhado dos campos importantes
+    // console.log('🎯 Análise de campos específicos:', {
+    //   // Identificação
+    //   id: paciente.id,
+    //   nid: paciente.nid,
+    //   nome: paciente.nome,
+    //   apelido: paciente.apelido,
       
-      // Documentos
-      tipoDocumento: paciente.tipoDocumento,
-      tipoDocumentoId: paciente.tipo_documento_id,
-      bilheteIdentidade: paciente.bilhete_identidade,
-      bilheteIdentidadeCamel: paciente.bilheteIdentidade,
+    //   // Documentos
+    //   tipoDocumento: paciente.tipoDocumento,
+    //   tipoDocumentoId: paciente.tipo_documento_id,
+    //   bilheteIdentidade: paciente.bilhete_identidade,
+    //   bilheteIdentidadeCamel: paciente.bilheteIdentidade,
       
-      // Raça (CRÍTICO)
-      raca: paciente.raca,
-      racaId: paciente.racaId,
-      raca_id: paciente.raca_id,
-      raca_nome: paciente.raca_nome,
+    //   // Raça (CRÍTICO)
+    //   raca: paciente.raca,
+    //   racaId: paciente.racaId,
+    //   raca_id: paciente.raca_id,
+    //   raca_nome: paciente.raca_nome,
       
-      // Localização
-      provincia: paciente.provincia,
-      provinciaId: paciente.provinciaId,
-      provincia_id: paciente.provincia_id,
-      distrito: paciente.distrito,
-      distritoId: paciente.distritoId,
-      distrito_id: paciente.distrito_id,
-      distrito_nome: paciente.distrito_nome,
-      bairro: paciente.bairro,
-      bairroId: paciente.bairroId,
-      bairro_id: paciente.bairro_id,
-      bairro_nome: paciente.bairro_nome,
+    //   // Localização
+    //   provincia: paciente.provincia,
+    //   provinciaId: paciente.provinciaId,
+    //   provincia_id: paciente.provincia_id,
+    //   distrito: paciente.distrito,
+    //   distritoId: paciente.distritoId,
+    //   distrito_id: paciente.distrito_id,
+    //   distrito_nome: paciente.distrito_nome,
+    //   bairro: paciente.bairro,
+    //   bairroId: paciente.bairroId,
+    //   bairro_id: paciente.bairro_id,
+    //   bairro_nome: paciente.bairro_nome,
       
-      // Outros
-      genero: paciente.genero,
-      estadoCivil: paciente.estado_civil,
-      celular: paciente.celular,
-      celularAlternativo: paciente.celular_alternativo,
-      email: paciente.email,
+    //   // Outros
+    //   genero: paciente.genero,
+    //   estadoCivil: paciente.estado_civil,
+    //   celular: paciente.celular,
+    //   celularAlternativo: paciente.celular_alternativo,
+    //   email: paciente.email,
       
-      // Datas
-      dataNascimento: paciente.data_nascimento,
-      dataNascimentoCamel: paciente.dataNascimento
-    });
+    //   // Datas
+    //   dataNascimento: paciente.data_nascimento,
+    //   dataNascimentoCamel: paciente.dataNascimento
+    // });
     
     // Garantir que os campos de data sejam dayjs ou null
     const pacienteProcessado = {
@@ -3924,141 +3634,12 @@ const CadastroPaciente = () => {
       dataValidade: getDayjsOrNull(paciente.dataValidade || paciente.data_validade)
     };
 
-    console.log('✅ Paciente processado para modal:', pacienteProcessado);
     setCurrentPaciente(pacienteProcessado);
     setIsAcompanhanteModalVisible(true);
     setEditingAcompanhante(null);
     acompanhanteForm.resetFields();
   };
 
-  /* TODO: Reativar quando integrar formulário de acompanhantes com backend
-  // Função para adicionar um acompanhante
-  const handleAddAcompanhante = async (values) => {
-    if (!currentPaciente?.nid) {
-      message.error('NID do paciente não encontrado');
-      return;
-    }
-
-    try {
-      if (editingAcompanhante) {
-        // Atualizar acompanhante existente no backend
-        console.log('📝 Atualizando acompanhante:', editingAcompanhante.id, values);
-        
-        const resultado = await atualizarParente(editingAcompanhante.id, {
-          nome: values.nome,
-          grauParentescoId: values.grauParentesco,
-          celular: values.celular,
-          celularAlternativo: values.celularAlternativo
-        });
-        
-        if (resultado) {
-          // Atualizar também no estado local de pacientes
-          const updatedPacientes = pacientes.map(p => {
-            if (p.id === currentPaciente.id || p.nid === currentPaciente.nid) {
-              const acompanhantes = p.acompanhantes || [];
-              return {
-                ...p,
-                acompanhantes: acompanhantes.map(a =>
-                  a.id === editingAcompanhante.id ? resultado : a
-                )
-              };
-            }
-            return p;
-          });
-          setPacientes(updatedPacientes);
-          
-          acompanhanteForm.resetFields();
-          setEditingAcompanhante(null);
-        }
-      } else {
-        // Adicionar novo acompanhante no backend
-        console.log('➕ Adicionando novo acompanhante:', values);
-        
-        const resultado = await criarParente(currentPaciente.nid, {
-          nome: values.nome,
-          grauParentescoId: values.grauParentesco,
-          celular: values.celular,
-          celularAlternativo: values.celularAlternativo
-        });
-        
-        if (resultado) {
-          // Atualizar também no estado local de pacientes
-          const updatedPacientesNovo = pacientes.map(p => {
-            if (p.id === currentPaciente.id || p.nid === currentPaciente.nid) {
-              const acompanhantes = p.acompanhantes || [];
-              return {
-                ...p,
-                acompanhantes: [...acompanhantes, resultado]
-              };
-            }
-            return p;
-          });
-          setPacientes(updatedPacientesNovo);
-          
-          acompanhanteForm.resetFields();
-        }
-      }
-    } catch (error) {
-      console.error('❌ Erro ao salvar acompanhante:', error);
-      // Mensagem de erro já é exibida pelo hook
-    }
-  };
-
-  // Função para editar um acompanhante
-  const editAcompanhante = (acompanhante) => {
-    setEditingAcompanhante(acompanhante);
-    acompanhanteForm.setFieldsValue(acompanhante);
-  };
-
-  // Função para deletar um acompanhante
-  const deleteAcompanhante = async (acompanhanteId) => {
-    if (!acompanhanteId) {
-      message.error('ID do acompanhante não encontrado');
-      return;
-    }
-
-    try {
-      console.log('🗑️ Deletando acompanhante:', acompanhanteId);
-      
-      const sucesso = await deletarParente(acompanhanteId);
-      
-      if (sucesso) {
-        // Atualizar também no estado local de pacientes
-        const updatedPacientesDelete = pacientes.map(p => {
-          if (p.id === currentPaciente.id || p.nid === currentPaciente.nid) {
-            return {
-              ...p,
-              acompanhantes: (p.acompanhantes || []).filter(a => a.id !== acompanhanteId)
-            };
-          }
-          return p;
-        });
-        setPacientes(updatedPacientesDelete);
-      }
-    } catch (error) {
-      console.error('❌ Erro ao deletar acompanhante:', error);
-      // Mensagem de erro já é exibida pelo hook
-    }
-  };
-
-  /* TODO: Usar quando integrar tabela de parentes com backend
-  // Colunas para a tabela de acompanhantes
-  const acompanhantesColumns = [
-    { title: 'Nome', dataIndex: 'nome', key: 'nome' },
-    { title: 'Grau de Parentesco', dataIndex: 'grauParentesco', key: 'grauParentesco' },
-    { title: 'Celular', dataIndex: 'celular', key: 'celular' },
-    {
-      title: 'Ações',
-      key: 'acoes',
-      render: (_, record) => (
-        <Space>
-          <Button type="primary" onClick={() => editAcompanhante(record)}>Editar</Button>
-          <Button danger onClick={() => deleteAcompanhante(record.id)}>Excluir</Button>
-        </Space>
-      )
-    }
-  ];
-  */
 
   // Funções para gerenciar Utentes Autônomos
   const openUtenteAutonomoModal = () => {
@@ -4068,7 +3649,6 @@ const CadastroPaciente = () => {
   };
 
   const openEditUtenteAutonomoModal = (utente) => {
-    console.log('🔧 Editando utente autônomo:', utente);
     
     setEditingUtenteAutonomo(utente);
     
@@ -4086,7 +3666,6 @@ const CadastroPaciente = () => {
       celularalternativo: utente.celular_alternativo || utente.celularalternativo
     };
     
-    console.log('📝 Valores mapeados para o formulário:', formValues);
     
     utenteAutonomoForm.setFieldsValue(formValues);
     setIsUtenteAutonomoModalVisible(true);
@@ -4794,10 +4373,7 @@ const CadastroPaciente = () => {
       width: 200,
       render: (_, record) => {
         const s = record.status;
-        // Log apenas em dev para diagnosticar valores reais
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`🔍 [Ações] id=${record.id} status="${s}" statusPagamento="${record.statusPagamento}"`);
-        }
+
         // pending / solicitado → Aceitar / Rejeitar
         if (s === 'pending' || s === 'solicitado' || s === 'pendente') {
           return (
@@ -5249,7 +4825,6 @@ const CadastroPaciente = () => {
             const tipoUtenteIdCorreto = currentPaciente.tipo_utente_id || currentPaciente.tipoUtenteId;
             if (tipoUtenteIdCorreto) {
               value = tipoUtenteIdCorreto;
-              console.log('🎯 FORÇANDO valor correto do tipoUtente:', value);
             }
           }
           
@@ -5260,12 +4835,10 @@ const CadastroPaciente = () => {
             // Percorrer todos os campos alternativos
             for (const alternativeField of fieldMapping[field]) {
               const alternativeValue = currentPaciente[alternativeField];
-              console.log(`  🔍 Tentando campo alternativo "${alternativeField}":`, alternativeValue);
               
               // Lógica padrão para todos os campos
               if (alternativeValue !== undefined && alternativeValue !== null && alternativeValue !== '') {
                 foundValue = alternativeValue;
-                console.log(`  ✅ Encontrado em "${alternativeField}":`, foundValue);
                 
                 // Log especial para raca, distrito e bairro
                 if (field === 'raca' || field === 'distrito' || field === 'bairro') {
@@ -5273,7 +4846,6 @@ const CadastroPaciente = () => {
                   const service = field === 'raca' ? patientServiceRacas : field === 'distrito' ? patientServiceDistritos : patientServiceBairros;
                   const valueId = foundValue;
                   const foundItem = Array.isArray(service) ? service.find(serviceItem => serviceItem.id === valueId) : null;
-                  console.log(`    🏙️ ${field.toUpperCase()} - ID: ${valueId}, Nome: ${foundItem?.nome || 'Não encontrado'}, Service: ${serviceName} (${service?.length || 0} itens)`);
                 }
                 
                 break; // Usar o primeiro valor encontrado
@@ -6253,18 +5825,7 @@ const CadastroPaciente = () => {
 
       // ACUMULAÇÃO INTELIGENTE DE VALORES
       const updatedFormValues = { ...acompanhanteFormValues, ...processedValues };
-      
-      console.log('📊 DEBUG COMPLETO DA NAVEGAÇÃO:', {
-        stepTitle: currentStep.title,
-        'acompanhanteStep atual': acompanhanteStep,
-        'processedValues.tipoUtente': processedValues.tipoUtente,
-        'acompanhanteFormValues.tipoUtente': acompanhanteFormValues.tipoUtente,
-        'updatedFormValues.tipoUtente': updatedFormValues.tipoUtente,
-        'values originais do step': values.tipoUtente,
-        previouslyAccumulated: Object.keys(acompanhanteFormValues || {}).length,
-        newFromThisStep: Object.keys(processedValues).length,
-        totalAccumulated: Object.keys(updatedFormValues).length
-      });
+
       
       console.log('📊 ACUMULAÇÃO DE VALORES:', {
         stepTitle: currentStep.title,
@@ -6582,35 +6143,15 @@ const CadastroPaciente = () => {
         // Converter nomes de campos do formulário para o formato esperado pelo backend
         const camposConvertidos = {};
         
-        console.log('📝 Valores do formulário antes da conversão:', finalEditValues);
-        
-        // Debug bilheteIdentidade - padrão utentes autônomos
-        console.log('🎯 DEBUG BILHETE IDENTIDADE:', {
-          bilheteIdentidade: finalEditValues.bilheteIdentidade,
-          typeof: typeof finalEditValues.bilheteIdentidade
-        });
         
         // Mapear bilheteIdentidade diretamente - IGUAL AOS UTENTES AUTÔNOMOS
         if (finalEditValues.bilheteIdentidade) {
-          console.log('🆔 DEBUG FINISH BILHETE:', {
-            valor: finalEditValues.bilheteIdentidade,
-            tipo: typeof finalEditValues.bilheteIdentidade,
-            temLetras: /[A-Za-z]/.test(finalEditValues.bilheteIdentidade)
-          });
-          
+   
           camposConvertidos.bilhete_identidade = finalEditValues.bilheteIdentidade.trim();
-          console.log('✅ FINISH BILHETE MAPEADO:', camposConvertidos.bilhete_identidade);
         }
         
         // ==================== VALIDAÇÃO ROBUSTA TIPO UTENTE (MESMO PADRÃO DO HANDLECREATE E HANDLEEDIT) ====================
-        console.log('👤 VALIDAÇÃO ROBUSTA DE TIPO UTENTE NO HANDLEFINISH:', {
-          tipoUtente: finalEditValues.tipoUtente,
-          tipoValor: typeof finalEditValues.tipoUtente,
-          isNumber: !isNaN(finalEditValues.tipoUtente),
-          patientServiceTiposUtentesLength: patientServiceTiposUtentes?.length || 0,
-          tiposDisponiveis: patientServiceTiposUtentes?.map(t => ({id: t.id, nome: t.nome})) || []
-        });
-        
+
         if (finalEditValues.tipoUtente !== undefined && finalEditValues.tipoUtente !== null && finalEditValues.tipoUtente !== '') {
           let tipoUtenteId = finalEditValues.tipoUtente;
           
@@ -6630,7 +6171,6 @@ const CadastroPaciente = () => {
               'comunidade': 11
             };
             tipoUtenteId = mapeamentoTipoUtente[finalEditValues.tipoUtente];
-            console.log(`🔄 FINISH: Convertendo tipoUtente "${finalEditValues.tipoUtente}" para ID: ${tipoUtenteId}`);
           }
           
           // Validar se existe no backend (mesmo padrão do handleCreate)
@@ -6638,46 +6178,31 @@ const CadastroPaciente = () => {
             const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => t.id === parseInt(tipoUtenteId));
             if (tipoUtenteExiste) {
               camposConvertidos.tipo_utente_id = parseInt(tipoUtenteId, 10);
-              console.log('✅ FINISH: TIPO UTENTE VALIDADO NO BACKEND:', tipoUtenteExiste);
             } else {
-              console.warn('⚠️ FINISH: TIPO UTENTE não encontrado no backend, usando fallback');
               camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
-              console.log('⚠️ FINISH: Usando tipo utente fallback:', camposConvertidos.tipo_utente_id);
             }
           } else {
-            console.warn('⚠️ FINISH: TIPO UTENTE inválido - usando fallback ou valor original');
             if (isEdit && editingPaciente) {
               camposConvertidos.tipo_utente_id = editingPaciente?.tipo_utente_id || editingPaciente?.tipoUtenteId || 1;
-              console.log('⚠️ FINISH (EDIT): Mantendo valor original:', camposConvertidos.tipo_utente_id);
             } else if (currentPaciente) {
               camposConvertidos.tipo_utente_id = currentPaciente?.tipo_utente_id || currentPaciente?.tipoUtenteId || 1;
-              console.log('⚠️ FINISH (NEW): Mantendo valor original:', camposConvertidos.tipo_utente_id);
             } else {
               camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
-              console.log('⚠️ FINISH: Usando fallback completo:', camposConvertidos.tipo_utente_id);
             }
           }
         }
         if (finalEditValues.unidadeOrganica !== undefined && finalEditValues.unidadeOrganica !== null && finalEditValues.unidadeOrganica !== '') {
           camposConvertidos.unidade_organica_id = parseInt(finalEditValues.unidadeOrganica, 10);
-          console.log('✅ unidadeOrganica mapeado:', finalEditValues.unidadeOrganica, '→', camposConvertidos.unidade_organica_id);
         }
         if (finalEditValues.provincia !== undefined && finalEditValues.provincia !== null && finalEditValues.provincia !== '') {
           camposConvertidos.provincia_id = parseInt(finalEditValues.provincia, 10);
-          console.log('✅ provincia mapeado:', finalEditValues.provincia, '→', camposConvertidos.provincia_id);
         }
         if (finalEditValues.distrito !== undefined && finalEditValues.distrito !== null && finalEditValues.distrito !== '') {
           const distritoId = parseInt(finalEditValues.distrito, 10);
           camposConvertidos.distrito_id = distritoId;
           
-          // Buscar nome do distrito para log
-          const distritoNome = Array.isArray(patientServiceDistritos) 
-            ? patientServiceDistritos.find(d => d.id === distritoId)?.nome 
-            : 'Desconhecido';
-          
-          console.log('🎯 DISTRITO mapeado:', finalEditValues.distrito, '→', camposConvertidos.distrito_id, `(${distritoNome})`);
+
         } else {
-          console.log('❌ DISTRITO NÃO mapeado - valor:', finalEditValues.distrito);
         }
         if (finalEditValues.bairro !== undefined && finalEditValues.bairro !== null && finalEditValues.bairro !== '') {
           const bairroId = parseInt(finalEditValues.bairro, 10);
@@ -6694,29 +6219,23 @@ const CadastroPaciente = () => {
         }
         if (finalEditValues.tipoDocumento !== undefined && finalEditValues.tipoDocumento !== null && finalEditValues.tipoDocumento !== '') {
           camposConvertidos.tipo_documento_id = parseInt(finalEditValues.tipoDocumento, 10);
-          console.log('✅ tipoDocumento mapeado:', finalEditValues.tipoDocumento, '→', camposConvertidos.tipo_documento_id);
         }
         if (finalEditValues.raca !== undefined && finalEditValues.raca !== null && finalEditValues.raca !== '') {
           camposConvertidos.raca_id = parseInt(finalEditValues.raca, 10);
-          console.log('✅ raca mapeado:', finalEditValues.raca, '→', camposConvertidos.raca_id);
         }
         
         // Mapear campos de celular e whatsApp
         if (finalEditValues.celular !== undefined && finalEditValues.celular !== null && finalEditValues.celular !== '') {
           camposConvertidos.celular = finalEditValues.celular;
-          console.log('🔥 celular mapeado:', finalEditValues.celular, '→', camposConvertidos.celular);
         }
         if (finalEditValues.celularalternativo !== undefined && finalEditValues.celularalternativo !== null && finalEditValues.celularalternativo !== '') {
           camposConvertidos.celular_alternativo = finalEditValues.celularalternativo;
-          console.log('🔥 celularalternativo mapeado:', finalEditValues.celularalternativo, '→', camposConvertidos.celular_alternativo);
         }
         if (finalEditValues.telefone !== undefined && finalEditValues.telefone !== null && finalEditValues.telefone !== '') {
           camposConvertidos.celular = finalEditValues.telefone;
-          console.log('✅ telefone mapeado:', finalEditValues.telefone, '→', camposConvertidos.celular);
         }
         if (finalEditValues.whatsApp !== undefined && finalEditValues.whatsApp !== null && finalEditValues.whatsApp !== '') {
           camposConvertidos.whatsapp = finalEditValues.whatsApp;
-          console.log('🔥 whatsApp mapeado:', finalEditValues.whatsApp, '→', camposConvertidos.whatsapp);
         }
         
         // Mapeamento direto do bilhete_identidade - mesma lógica dos utentes autônomos
@@ -6724,94 +6243,32 @@ const CadastroPaciente = () => {
         // Mapear outros campos importantes para snake_case
         if (finalEditValues.dataNascimento !== undefined && finalEditValues.dataNascimento !== null) {
           camposConvertidos.data_nascimento = finalEditValues.dataNascimento;
-          console.log('📅 dataNascimento mapeado:', finalEditValues.dataNascimento, '→', camposConvertidos.data_nascimento);
         }
         if (finalEditValues.estadoCivil !== undefined && finalEditValues.estadoCivil !== null && finalEditValues.estadoCivil !== '') {
           camposConvertidos.estado_civil = finalEditValues.estadoCivil;
-          console.log('💒 estadoCivil mapeado:', finalEditValues.estadoCivil, '→', camposConvertidos.estado_civil);
         }
         if (finalEditValues.avenidaRuaCelula !== undefined && finalEditValues.avenidaRuaCelula !== null && finalEditValues.avenidaRuaCelula !== '') {
           camposConvertidos.avenida_rua_celula = finalEditValues.avenidaRuaCelula;
-          console.log('🏠 avenidaRuaCelula mapeado:', finalEditValues.avenidaRuaCelula, '→', camposConvertidos.avenida_rua_celula);
         }
         if (finalEditValues.numeroCasa !== undefined && finalEditValues.numeroCasa !== null && finalEditValues.numeroCasa !== '') {
           camposConvertidos.numero_casa = finalEditValues.numeroCasa;
-          console.log('🏠 numeroCasa mapeado:', finalEditValues.numeroCasa, '→', camposConvertidos.numero_casa);
         }
         
-        console.log('🔄 Campos convertidos final:', camposConvertidos);
         
         // Mesclar campos convertidos com finalEditValues
         const valoresFinais = { ...finalEditValues, ...camposConvertidos };
         
-        // Dados finais processados
-        
-        console.log('🚀 DADOS FINAIS A SEREM ENVIADOS:', {
-          valoresOriginais: finalEditValues,
-          camposConvertidos,
-          valoresFinais,
-          // Verificações específicas dos campos problemáticos (snake_case)
-          contemDistrito: 'distrito_id' in valoresFinais,
-          contemBairro: 'bairro_id' in valoresFinais,
-          contemCelularAlternativo: 'celular_alternativo' in valoresFinais,
-          contemWhatsApp: 'whatsapp' in valoresFinais,
-          contemTipoUtente: 'tipo_utente_id' in valoresFinais,
-          contemUnidadeOrganica: 'unidade_organica_id' in valoresFinais,
-          contemBilheteIdentidade: 'bilhete_identidade' in valoresFinais,
-          contemTipoDocumento: 'tipo_documento_id' in valoresFinais,
-          contemRaca: 'raca_id' in valoresFinais,
-          contemProvincia: 'provincia_id' in valoresFinais,
-          // Debug extra para documento
-          todosOsCamposDocumento: {
-            bilhete_identidade: valoresFinais.bilhete_identidade,
-            // bilheteIdentidade: valoresFinais.bilheteIdentidade,
-            documento: valoresFinais.documento,
-            // numeroDocumento: valoresFinais.numeroDocumento
-          },
-          // Valores específicos
-          distrito_id: valoresFinais.distrito_id,
-          bairro_id: valoresFinais.bairro_id,
-          celular_alternativo: valoresFinais.celular_alternativo,
-          whatsapp: valoresFinais.whatsapp,
-          tipo_utente_id: valoresFinais.tipo_utente_id,
-          unidade_organica_id: valoresFinais.unidade_organica_id,
-          bilhete_identidade: valoresFinais.bilhete_identidade,
-          tipo_documento_id: valoresFinais.tipo_documento_id,
-          raca_id: valoresFinais.raca_id,
-          provincia_id: valoresFinais.provincia_id
-        });
-
         if (isEdit) {
           // Modo de edição - mesclar dados existentes com novos valores
           const dadosMesclados = { ...editingPaciente, ...valoresFinais };
-          console.log('🔄 Atualizando paciente (modo edição):', {
-            pacienteId: editingPaciente.id,
-            dadosOriginais: editingPaciente,
-            novosValores: finalEditValues,
-            camposConvertidos,
-            dadosMesclados
-          });
+
           await atualizarPaciente(editingPaciente.id, dadosMesclados);
           
           // message.success já é chamado dentro de atualizarPaciente
         } else {
           // Modo de configuração (novo cadastro) - mesclar dados existentes com novos valores
           const dadosMesclados = { ...currentPaciente, ...valoresFinais };
-          console.log('🔄 Atualizando paciente (modo configuração):', {
-            pacienteId: currentPaciente.id,
-            dadosOriginais: currentPaciente,
-            novosValores: finalValues,
-            camposConvertidos,
-            dadosMesclados
-          });
-          
-          // DEBUG ESPECÍFICO ANTES DE ATUALIZAR
-          console.log('🚨 DADOS ENVIADOS PARA ATUALIZARPACIENTE:', {
-            'dadosMesclados.bilhete_identidade': dadosMesclados.bilhete_identidade,
-            'dadosMesclados.bilheteIdentidade': dadosMesclados.bilheteIdentidade,
-            'existe_bilhete_identidade': 'bilhete_identidade' in dadosMesclados,
-            'typeof_bilhete_identidade': typeof dadosMesclados.bilhete_identidade
-          });
+
           
           await atualizarPaciente(currentPaciente.id, dadosMesclados);
           
@@ -6999,7 +6456,6 @@ const CadastroPaciente = () => {
         // Processamento seguro das datas antes de passar para create/edit
         const processedValues = { ...allFormValues };
 
-        console.log('📋 Todos os valores acumulados do wizard:', processedValues);
 
         // Chama a função apropriada (handleEdit ou handleCreate)
         if (isEdit) {
@@ -7122,12 +6578,6 @@ const CadastroPaciente = () => {
                   
                   const precisaUnidadeOrganica = tiposQueNeedUnidadeOrganica.includes(codigoTipo);
                   
-                  console.log('🔍 Verificação Unidade Orgânica (Wizard):', {
-                    tipoUtenteId: tipoUtenteIdSelecionado,
-                    codigo: codigoTipo,
-                    nome: tipoUtenteSelecionado?.nome,
-                    precisaUnidadeOrganica
-                  });
                   
                   if (precisaUnidadeOrganica) {
                     return (
@@ -7182,13 +6632,7 @@ const CadastroPaciente = () => {
                   const tiposFamiliares = ['FAM-DOC', 'FAM-FUNC', 'FAM-INV'];
                   const isFamiliar = tiposFamiliares.includes(codigoTipo);
                   
-                  console.log('🔍 Verificação Familiar (Wizard):', {
-                    tipoUtenteId: tipoUtenteIdSelecionado,
-                    codigo: codigoTipo,
-                    nome: tipoUtenteSelecionado?.nome,
-                    isFamiliar
-                  });
-                  
+
                   if (isFamiliar) {
                     return <>
                       <Form.Item
@@ -7748,12 +7192,10 @@ const CadastroPaciente = () => {
                   setActiveTab(key);
                   // Atualizar lista quando mudar para tab "Para Especialidades"
                   if (key === '3') {
-                    console.log('📋 Tab "Para Especialidades" selecionada - atualizando lista...');
                     carregarPacientesTransferidosEspecialidade();
                   }
                   // Atualizar lista quando mudar para tab "Solicitações de Exames"
                   if (key === '4') {
-                    console.log('🧪 Tab "Solicitações de Exames" selecionada - atualizando lista...');
                     fetchSolicitacoes();
                   }
                 }}
@@ -7853,27 +7295,6 @@ const CadastroPaciente = () => {
             />
           ) : (
             <>
-              {/* Painel de debug — mostra estrutura real do 1º item da API */}
-              {process.env.NODE_ENV === 'development' && examesPendentes.length > 0 && (() => {
-                const raw = examesPendentes[0];
-                const campos = Object.keys(raw);
-                return (
-                  <div style={{
-                    background: '#fffbe6', border: '1px solid #ffe58f',
-                    borderRadius: 6, padding: '8px 12px', marginBottom: 8,
-                    fontSize: 11, fontFamily: 'monospace'
-                  }}>
-                    <strong style={{ color: '#d48806' }}>🔍 DEBUG — Campos do 1º item da API:</strong>
-                    <div style={{ marginTop: 4, color: '#595959' }}>
-                      {campos.map(k => (
-                        <span key={k} style={{ marginRight: 8, background: '#fff', padding: '1px 4px', borderRadius: 3, border: '1px solid #e8e8e8' }}>
-                          <b>{k}</b>: {JSON.stringify(raw[k])?.slice(0, 60)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
 
               <Table
                 columns={solicitacoesExamesColumns}
@@ -8329,16 +7750,13 @@ const CadastroPaciente = () => {
                   placeholder="Selecione o tipo de consulta"
                   loading={loadingPagamentoConfig}
                   onChange={async (tipoConsultaId) => {
-                    console.log('🔄 Tipo de consulta alterado:', tipoConsultaId);
                     
                     // Atualizar valor automaticamente quando tipo de consulta muda
                     const tipoUtenteId = pacientePagamentoRegular?.tipoUtenteId || pacientePagamentoRegular?.tipo_utente?.id;
-                    console.log('👤 ID do tipo de utente:', tipoUtenteId);
                     
                     if (tipoUtenteId) {
                       message.loading('Carregando valor da consulta...', 1);
                       const novoValor = await buscarValorConsulta(tipoConsultaId, tipoUtenteId);
-                      console.log('💰 Novo valor calculado:', novoValor);
                       
                       // Validar se o valor foi carregado corretamente
                       if (validarValorBackend(novoValor, tipoConsultaId, tipoUtenteId)) {
@@ -8350,12 +7768,6 @@ const CadastroPaciente = () => {
                       }
                     } else {
                       console.warn('⚠️ Tipo de utente não encontrado para calcular valor');
-                      console.log('🔍 Debug tiposConsulta:', { 
-                        isArray: Array.isArray(tiposConsulta), 
-                        type: typeof tiposConsulta, 
-                        length: tiposConsulta?.length,
-                        content: tiposConsulta
-                      });
                       
                       // Usar valor padrão do tipo de consulta selecionado se disponível
                       if (!Array.isArray(tiposConsulta)) {

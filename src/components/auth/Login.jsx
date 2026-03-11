@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Input, Button, message, Layout } from 'antd';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
 
 const { Content } = Layout;
@@ -9,7 +9,7 @@ const Login = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const navigate = useNavigate();
+    // const navigate = useNavigate();
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -26,23 +26,22 @@ const Login = () => {
         setLoading(true);
 
         try {
-            console.log('Tentando login com:', { email, password });
 
             const result = await authService.login(email, password);
 
-            console.log('Resultado do login:', result);
+            // console.log('Resultado do login:', result);
 
             if (result.success) {
-                const user = result.data.user;
+                // const user = result.data.user;
 
-                console.log('Usuário logado:', user);
-                console.log('Token salvo:', localStorage.getItem('token'));
-                console.log('User salvo:', localStorage.getItem('user'));
+                // console.log('Usuário logado:', user);
+                // console.log('Token salvo:', localStorage.getItem('token'));
+                // console.log('User salvo:', localStorage.getItem('user'));
 
                 message.success(result.message || 'Login realizado com sucesso!');
 
                 setTimeout(() => {
-                    console.log('Navegando para /home...');
+                    // console.log('Navegando para /home...');
                     window.location.href = '/home';
                 }, 300);
 

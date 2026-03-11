@@ -18,17 +18,13 @@ const useUtentesAutonomos = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      console.log('📤 Carregando utentes autônomos...');
-      
+    try {      
       const response = await utenteAutonomoService.getAllUtentesAutonomos(filtros);
       
-      console.log('📥 Resposta de utentes autônomos:', response);
       
       if (response.success && response.data) {
         const dados = Array.isArray(response.data) ? response.data : [];
         setUtentesAutonomos(dados);
-        console.log('✅ Utentes autônomos carregados:', dados.length);
         return dados;
       } else {
         console.warn('⚠️ Erro ao carregar utentes autônomos:', response.message);
@@ -54,13 +50,10 @@ const useUtentesAutonomos = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      console.log('📤 Atualizando utente autônomo:', { id, dadosUtente });
-      
+    try {      
       const response = await utenteAutonomoService.updateUtenteAutonomo(id, dadosUtente);
       
       if (response.success) {
-        console.log('✅ Utente autônomo atualizado:', response.data);
         
         // Atualizar a lista local
         setUtentesAutonomos(prev => 
@@ -101,13 +94,10 @@ const useUtentesAutonomos = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      console.log('📤 Excluindo utente autônomo:', id);
-      
+    try {      
       const response = await utenteAutonomoService.deleteUtenteAutonomo(id);
       
       if (response.success) {
-        console.log('✅ Utente autônomo excluído');
         
         // Remover da lista local
         setUtentesAutonomos(prev => prev.filter(utente => utente.id !== id));
@@ -134,13 +124,10 @@ const useUtentesAutonomos = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      console.log('📤 Alterando status do utente autônomo:', { id, novoStatus });
-      
+    try {      
       const response = await utenteAutonomoService.changeStatus(id, novoStatus);
       
       if (response.success) {
-        console.log('✅ Status alterado:', response.data);
         
         // Atualizar a lista local
         setUtentesAutonomos(prev => 
@@ -168,13 +155,10 @@ const useUtentesAutonomos = () => {
    * Obtém o próximo NID disponível
    */
   const obterProximoNID = useCallback(async () => {
-    try {
-      console.log('📤 Obtendo próximo NID...');
-      
+    try {      
       const response = await utenteAutonomoService.getNextNID();
       
       if (response.success) {
-        console.log('✅ Próximo NID:', response.data.next_nid);
         return response.data.next_nid;
       } else {
         throw new Error(response.message || 'Erro ao obter próximo NID');
