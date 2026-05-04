@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // URL base do serviço de configuração (porta 8004)
-const API_URL = process.env.REACT_APP_CONFIG_SERVICE_URL || 'http://localhost:8004/api';
+const API_URL = 'http://196.3.100.216/api';
 
 /**
  * Serviço para buscar dados de referência externa do Configuration Service (porta 8004)
@@ -19,7 +19,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/racas`, {
+            const response = await axios.get(`${API_URL}/racas/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -63,7 +63,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/tipos-utentes`, {
+            const response = await axios.get(`${API_URL}/tipos-utente/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -107,7 +107,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/unidades-organicas`, {
+            const response = await axios.get(`${API_URL}/unidades-organicas/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -151,7 +151,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/tipos-documento`, {
+            const response = await axios.get(`${API_URL}/tipos-documento/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -195,7 +195,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/provincias`, {
+            const response = await axios.get(`${API_URL}/provincias/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -239,7 +239,7 @@ class ConfigurationService {
             
             // ...existing code...
             //implementar a rota correcta dos distritos com relacionamento provincia
-            const response = await axios.get(`${API_URL}/distritos`, {
+            const response = await axios.get(`${API_URL}/distritos/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -287,7 +287,7 @@ class ConfigurationService {
             // ...existing code...
             
             //implemtentar a rota certa do relacionamento
-            const response = await axios.get(`${API_URL}/bairros`, {
+            const response = await axios.get(`${API_URL}/bairros/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -338,7 +338,7 @@ class ConfigurationService {
         try {
             const token = localStorage.getItem('token');
             
-            const response = await axios.get(`${API_URL}/tipos-documentos`, {
+            const response = await axios.get(`${API_URL}/tipos-documentos/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -386,7 +386,7 @@ class ConfigurationService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/graus-parentesco`, {
+            const response = await axios.get(`${API_URL}/graus-parentesco/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',

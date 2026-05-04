@@ -149,7 +149,7 @@ const CadastroPaciente = () => {
             'Content-Type': 'application/json'
           };
 
-          const response = await axios.get(`http://localhost:8002/api/pacientes/distritos`, {
+          const response = await axios.get(`http://196.3.100.216/api/pacientes/distritos`, {
             headers,
             params: { provincia_id: provinciaId }
           });
@@ -189,7 +189,7 @@ const CadastroPaciente = () => {
             'Content-Type': 'application/json'
           };
 
-          const response = await axios.get(`http://localhost:8002/api/pacientes/bairros`, {
+          const response = await axios.get(`http://196.3.100.216/api/pacientes/bairros`, {
             headers,
             params: { distrito_id: distritoId }
           });
@@ -331,7 +331,7 @@ const CadastroPaciente = () => {
 
 
       // FALLBACK: Usar rotas separadas se rota consolidada falhar
-      const metodosResponse = await fetch('http://127.0.0.1:8004/api/metodos-pagamento', {
+      const metodosResponse = await fetch('http://196.3.100.216/api/metodos-pagamento/', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -340,7 +340,7 @@ const CadastroPaciente = () => {
       });
 
       // Carregar tipos de consulta
-      const tiposResponse = await fetch('http://127.0.0.1:8004/api/tipos-consulta', {
+      const tiposResponse = await fetch('http://196.3.100.216/api/tipos-consulta/', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -408,7 +408,7 @@ const CadastroPaciente = () => {
       if (!token) {
         return buscarValorFallback(tipoConsultaId, tipoUtenteId);
       }
-      const verificarResponse = await fetch(`http://localhost:8002/api/pacientes/verificar-preco-disponivel?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+      const verificarResponse = await fetch(`http://196.3.100.216/api/pacientes/verificar-preco-disponivel?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -420,7 +420,7 @@ const CadastroPaciente = () => {
         if (!check.disponivel) {
           throw new Error(`Preço da consulta não configurado no sistema: ${check.message}`);
         }
-        const response = await fetch(`http://localhost:8002/api/pacientes/valor-consulta?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+        const response = await fetch(`http://196.3.100.216/api/pacientes/valor-consulta?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -439,7 +439,7 @@ const CadastroPaciente = () => {
           return buscarValorFallback(tipoConsultaId, tipoUtenteId);
         }
       } else {
-        const response = await fetch(`http://localhost:8002/api/pacientes/valor-consulta?tipo_consulta_id=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+        const response = await fetch(`http://196.3.100.216/api/pacientes/valor-consulta?tipo_consulta_id=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -551,12 +551,12 @@ const CadastroPaciente = () => {
         provinciasRes,
         grausParentescoRes
       ] = await Promise.all([
-        axios.get('http://localhost:8004/api/racas', { headers }),
-        axios.get('http://localhost:8004/api/tipos-utentes', { headers }),
-        axios.get('http://localhost:8004/api/unidades-organicas', { headers }),
-        axios.get('http://localhost:8004/api/tipos-documentos', { headers }),
-        axios.get('http://localhost:8004/api/provincias', { headers }),
-        axios.get('http://localhost:8004/api/graus-parentesco', { headers })
+        axios.get('http://196.3.100.216/api/racas/', { headers }),
+        axios.get('http://196.3.100.216/api/tipos-utentes/', { headers }),
+        axios.get('http://196.3.100.216/api/unidades-organicas/', { headers }),
+        axios.get('http://196.3.100.216/api/tipos-documentos/', { headers }),
+        axios.get('http://196.3.100.216/api/provincias/', { headers }),
+        axios.get('http://196.3.100.216/api/graus-parentesco/', { headers })
       ]);
 
       // Processar respostas (suporta tanto data.data quanto data)
@@ -600,7 +600,7 @@ const CadastroPaciente = () => {
 
       // Carregando pacientes transferidos para especialidade da porta 8002...
 
-      const response = await axios.get('http://127.0.0.1:8002/api/pacientes/transferidos-especialidade', {
+      const response = await axios.get('http://196.3.100.216/api/pacientes/transferidos-especialidade', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -1280,6 +1280,11 @@ const CadastroPaciente = () => {
     setAcompanhanteFormValues({});
     setUserHasChangedFormValues(false); // Resetar estado de alterações
     setIsEditModalVisible(true);
+    
+    // Garantir que as opções estejam carregadas antes de preencher o formulário
+    if (patientServiceRacas.length === 0) {
+      carregarConfiguracoesPatientService();
+    }
   };
   
   const handleCreate = async (values) => {
@@ -1307,12 +1312,12 @@ const CadastroPaciente = () => {
           provinciasRes,
           grausParentescoRes
         ] = await Promise.all([
-          axios.get('http://localhost:8002/api/pacientes/racas', { headers }),
-          axios.get('http://localhost:8002/api/pacientes/tipos-utentes', { headers }),
-          axios.get('http://localhost:8002/api/pacientes/unidades-organicas', { headers }),
-          axios.get('http://localhost:8002/api/pacientes/tipos-documentos', { headers }),
-          axios.get('http://localhost:8002/api/pacientes/provincias', { headers }),
-          axios.get('http://localhost:8002/api/pacientes/graus-parentesco', { headers })
+          axios.get('http://196.3.100.216/api/pacientes/racas', { headers }),
+          axios.get('http://196.3.100.216/api/pacientes/tipos-utentes', { headers }),
+          axios.get('http://196.3.100.216/api/pacientes/unidades-organicas', { headers }),
+          axios.get('http://196.3.100.216/api/pacientes/tipos-documentos', { headers }),
+          axios.get('http://196.3.100.216/api/pacientes/provincias', { headers }),
+          axios.get('http://196.3.100.216/api/pacientes/graus-parentesco', { headers })
         ]);
         
         // Processar respostas (tentar diferentes estruturas de resposta)
@@ -1955,7 +1960,7 @@ const CadastroPaciente = () => {
         throw new Error('NID do paciente é obrigatório para carregar dados de pagamento');
       }
       
-      const url = `http://localhost:8002/api/pacientes/nid/${numero}/${ano}/dados-pagamento`;
+      const url = `http://196.3.100.216/api/pacientes/nid/${numero}/${ano}/dados-pagamento`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -2104,7 +2109,7 @@ const CadastroPaciente = () => {
         message: error.message,
         stack: error.stack,
         pacienteId: paciente.id,
-        url: `http://localhost:8002/api/pacientes/${paciente.id}/dados-pagamento`
+        url: `http://196.3.100.216/api/pacientes/${paciente.id}/dados-pagamento`
       });
       
 
@@ -2425,7 +2430,7 @@ const CadastroPaciente = () => {
       };
 
 
-      const url = 'http://localhost:8002/api/pacientes/processar-pagamento';
+      const url = 'http://196.3.100.216/api/pacientes/processar-pagamento';
 
       const response = await fetch(url, {
         method: 'POST',
@@ -2784,7 +2789,7 @@ const CadastroPaciente = () => {
 
 
       const response = await axios.post(
-        'http://127.0.0.1:8002/api/services/pagamento-especialidade',
+        'http://196.3.100.216/api/services/pagamento-especialidade',
         payload,
         {
           headers: {
@@ -3019,7 +3024,7 @@ const CadastroPaciente = () => {
       }
 
       try {
-        const url = 'http://127.0.0.1:8002/api/solicitacoes-triagem';
+        const url = 'http://196.3.100.216/api/solicitacoes-triagem/';
         console.log('📨 Enviando solicitação de triagem:');
 
         const res = await fetch(url, {
@@ -4839,15 +4844,6 @@ const CadastroPaciente = () => {
               // Lógica padrão para todos os campos
               if (alternativeValue !== undefined && alternativeValue !== null && alternativeValue !== '') {
                 foundValue = alternativeValue;
-                
-                // Log especial para raca, distrito e bairro
-                if (field === 'raca' || field === 'distrito' || field === 'bairro') {
-                  const serviceName = field === 'raca' ? 'patientServiceRacas' : field === 'distrito' ? 'patientServiceDistritos' : 'patientServiceBairros';
-                  const service = field === 'raca' ? patientServiceRacas : field === 'distrito' ? patientServiceDistritos : patientServiceBairros;
-                  const valueId = foundValue;
-                  const foundItem = Array.isArray(service) ? service.find(serviceItem => serviceItem.id === valueId) : null;
-                }
-                
                 break; // Usar o primeiro valor encontrado
               }
             }
@@ -4860,10 +4856,27 @@ const CadastroPaciente = () => {
             // Processamento especial para campos de data
             if (field === 'dataNascimento' || field === 'dataValidade') {
               initialValues[field] = getDayjsOrNull(value);
+            } else if (field === 'raca' || field === 'distrito' || field === 'bairro') {
+              // Para campos com labelInValue, mapear ID para {value, label}
+              const serviceName = field === 'raca' ? 'patientServiceRacas' : field === 'distrito' ? 'patientServiceDistritos' : 'patientServiceBairros';
+              const service = field === 'raca' ? patientServiceRacas : field === 'distrito' ? patientServiceDistritos : patientServiceBairros;
+              const foundItem = Array.isArray(service) ? service.find(item => item.id === value) : null;
+              
+              if (foundItem) {
+                initialValues[field] = {
+                  value: foundItem.id,
+                  label: foundItem.nome
+                };
+                console.log(`  ✅ Campo "${field}" mapeado para:`, initialValues[field]);
+              } else {
+                // Se não encontrar, apenas armazenar o ID (será carregado quando os dados chegarem)
+                initialValues[field] = value;
+                console.log(`  ⚠️ Campo "${field}" não encontrado no serviço, mantendo ID: ${value}`);
+              }
             } else {
               initialValues[field] = value;
             }
-            console.log(`  ✅ Campo "${field}" será preenchido com:`, value);
+            console.log(`  ✅ Campo "${field}" será preenchido com:`, initialValues[field]);
           } else {
             console.log(`  ❌ Campo "${field}" NÃO encontrado no paciente (valor: ${value})`);
           }
@@ -4930,7 +4943,7 @@ const CadastroPaciente = () => {
       }, 100);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAcompanhanteModalVisible, isEditModalVisible, currentPaciente, userHasChangedFormValues]);
+  }, [isAcompanhanteModalVisible, isEditModalVisible, currentPaciente, userHasChangedFormValues, patientServiceRacas, patientServiceDistritos, patientServiceBairros]);
 
   // Formulario de configuracao do utente apos a criacao dos dados de emergencia
   const acompanhanteSteps = [
@@ -5122,11 +5135,11 @@ const CadastroPaciente = () => {
             {!isFieldFilledAndLocked('estadoCivil') && (
               <Col xs={24} sm={24} md={12} lg={12} xl={12}>
                 <Form.Item name="estadoCivil" label="Estado Civil" rules={[{ required: true }]}>
-                  <Select placeholder="Selecione o estado civil" disabled={isFieldFilledAndLocked('estadoCivil')}>
-                    <Option value="solteiro">Solteiro</Option>
-                    <Option value="casado">Casado</Option>
-                    <Option value="divorciado">Divorciado</Option>
-                    <Option value="viuvo">Viúvo</Option>
+                  <Select placeholder="Selecione o estado civil" disabled={isFieldFilledAndLocked('estadoCivil')} optionLabelProp="label">
+                    <Option value="solteiro" label="Solteiro">Solteiro</Option>
+                    <Option value="casado" label="Casado">Casado</Option>
+                    <Option value="divorciado" label="Divorciado">Divorciado</Option>
+                    <Option value="viuvo" label="Viúvo">Viúvo</Option>
                   </Select>
                 </Form.Item>
               </Col>
@@ -5149,9 +5162,12 @@ const CadastroPaciente = () => {
                     placeholder="Selecione a raça"
                     loading={loadingPatientServiceConfig}
                     disabled={isFieldFilledAndLocked('raca')}
+                    labelInValue
                   >
                     {Array.isArray(patientServiceRacas) && patientServiceRacas.map(raca => (
-                      <Option key={raca.id} value={raca.id}>{raca.nome}</Option>
+                      <Option key={raca.id} value={raca.id} label={raca.nome}>
+                        {raca.nome}
+                      </Option>
                     ))}
                     {patientServiceRacas?.length === 0 && loadingPatientServiceConfig && (
                       <Option disabled>Carregando raças...</Option>
@@ -5178,9 +5194,10 @@ const CadastroPaciente = () => {
                     onChange={(value) => handleProvinciaChange(value, form)}
                     loading={loadingPatientServiceConfig}
                     disabled={isFieldFilledAndLocked('provincia')}
+                    optionLabelProp="label"
                   >
                     {Array.isArray(patientServiceProvincias) && patientServiceProvincias.map(prov => (
-                      <Option key={prov.id || prov} value={prov.id || prov}>
+                      <Option key={prov.id || prov} value={prov.id || prov} label={prov.nome || prov}>
                         {prov.nome || prov}
                       </Option>
                     ))}
@@ -5199,12 +5216,13 @@ const CadastroPaciente = () => {
                 <Form.Item name="distrito" label="Distrito" rules={[{ required: true }]}>
                   <Select 
                     placeholder="Selecione o distrito"
-                    onChange={(value) => handleDistritoChange(value, form)}
+                    onChange={(value) => handleDistritoChange(value?.value || value, form)}
                     loading={loadingDistritos}
                     disabled={isFieldFilledAndLocked('distrito') || (patientServiceDistritos.length === 0 && !loadingDistritos)}
+                    labelInValue
                   >
                     {Array.isArray(patientServiceDistritos) && patientServiceDistritos.map(dist => (
-                      <Option key={dist.id || dist} value={dist.id || dist}>
+                      <Option key={dist.id || dist} value={dist.id || dist} label={dist.nome || dist}>
                         {dist.nome || dist}
                       </Option>
                     ))}
@@ -5225,9 +5243,10 @@ const CadastroPaciente = () => {
                     placeholder="Selecione o bairro"
                     loading={loadingBairros}
                     disabled={isFieldFilledAndLocked('bairro') || (patientServiceBairros.length === 0 && !loadingBairros)}
+                    labelInValue
                   >
                     {Array.isArray(patientServiceBairros) && patientServiceBairros.map(bairro => (
-                      <Option key={bairro.id || bairro} value={bairro.id || bairro}>
+                      <Option key={bairro.id || bairro} value={bairro.id || bairro} label={bairro.nome || bairro}>
                         {bairro.nome || bairro}
                       </Option>
                     ))}

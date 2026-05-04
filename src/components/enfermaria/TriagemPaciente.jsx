@@ -47,39 +47,85 @@ const TriagemPaciente = () => {
   // const [loadingConcluidas, setLoadingConcluidas] = useState(false);
 
   const refreshConcluidas = useCallback(async () => {
-    // ...existing code...
-    // setLoadingConcluidas(true);
     const token = localStorage.getItem('token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     
     try {
-      // ...existing code...
-      const response = await axios.get('http://127.0.0.1:8005/api/triagens/concluidas', {
+      const response = await axios.get('http://196.3.100.216/api/triagens/concluidas', {
         headers,
-        params: { page: 1, per_page: 20 }
+        params: { page: 1, per_page: 100 }
       });
       
       const data = response.data;
-      // ...existing code...
       
+      let triagensRaw = [];
       if (Array.isArray(data)) {
-        setTriagensConcluidasRaw(data);
+        triagensRaw = data;
         setTotalConcluidas(data.length);
       } else if (data.data && Array.isArray(data.data)) {
-        setTriagensConcluidasRaw(data.data);
+        triagensRaw = data.data;
         setTotalConcluidas(data.meta?.total || data.data.length);
       } else {
         console.warn('⚠️ Estrutura de resposta não reconhecida:', data);
         setTriagensConcluidasRaw([]);
         setTotalConcluidas(0);
+        return;
       }
+      
+      // Enriquecer dados com informações de solicitação de triagem se necessário
+      const triagensEnriquecidas = await Promise.all(
+        triagensRaw.map(async (triagem) => {
+          let enriched = { ...triagem };
+          
+          console.log('🔍 Triagem concluída recebida:', {
+            id: triagem.id,
+            triagem_id: triagem.triagem_id,
+            nid: triagem.nid,
+            nome: triagem.nome,
+            paciente_id: triagem.paciente_id,
+            paciente: triagem.paciente ? { id: triagem.paciente.id, nid: triagem.paciente.nid, nome: triagem.paciente.nome } : null
+          });
+          
+          // Se não tem NID, tentar buscar da solicitação de triagem
+          if (!enriched.nid && enriched.triagem_id) {
+            try {
+              const solRes = await axios.get(`http://196.3.100.216/api/solicitacoes-triagem/${enriched.triagem_id}`, { headers });
+              const solicitacao = solRes.data?.data || solRes.data;
+              if (solicitacao) {
+                enriched = {
+                  ...enriched,
+                  solicitacao_triagem: solicitacao,
+                  nid: enriched.nid || solicitacao.nid || (solicitacao.paciente?.nid),
+                  data_nascimento: enriched.data_nascimento || solicitacao.data_nascimento || (solicitacao.paciente?.data_nascimento),
+                  nome: enriched.nome || solicitacao.nome || solicitacao.paciente?.nome_completo || solicitacao.paciente?.nome,
+                  apelido: enriched.apelido || solicitacao.apelido || solicitacao.paciente?.apelido,
+                  genero: enriched.genero || solicitacao.genero || solicitacao.paciente?.genero,
+                  paciente_id: enriched.paciente_id || solicitacao.paciente_id || solicitacao.paciente?.id
+                };
+                console.log('✅ Dados enriquecidos da solicitação:', { nid: enriched.nid, nome: enriched.nome, data_nascimento: enriched.data_nascimento });
+              }
+            } catch (err) {
+              console.warn(`Não foi possível buscar solicitação de triagem ${enriched.triagem_id}:`, err?.message);
+            }
+          }
+          
+          // Se ainda não tem nid, tentar do paciente nested
+          if (!enriched.nid && enriched.paciente) {
+            enriched.nid = enriched.paciente.nid;
+            enriched.data_nascimento = enriched.data_nascimento || enriched.paciente.data_nascimento;
+          }
+          
+          return enriched;
+        })
+      );
+      
+      console.log('✅ Triagens concluídas enriquecidas:', triagensEnriquecidas.length);
+      setTriagensConcluidasRaw(triagensEnriquecidas);
     } catch (error) {
-      console.error('❌ Erro ao buscar sinais vitais:', error);
+      console.error('❌ Erro ao buscar triagens concluídas:', error);
       console.error('❌ Detalhes do erro:', error.response?.data || error.message);
       setTriagensConcluidasRaw([]);
       setTotalConcluidas(0);
-    } finally {
-      // setLoadingConcluidas(false);
     }
   }, []);
 
@@ -121,17 +167,46 @@ const TriagemPaciente = () => {
 
   // Normalizar campos vindos do backend (snake_case) para camelCase usados pela UI
   const normalizeTriagem = (t = {}) => ({
-    // Ensure a stable `id` exists for table rowKey and local operations
+    // IMPORTANTE: `t.id` aqui é o ID da SolicitacaoTriagem de patient-service (PK)
+    // Este é o valor que DEVE ser enviado como triagem_id ao backend para sinais-vitais
     id: t.id || t.triagem_id || t.paciente_id || (t.paciente && t.paciente.id) || null,
-    codigoTriagem: t.triagem_id || t.triagem_id || t.id || null,
+    // solicitacaoTriagemId = o ID real da solicitacao de triagem (de patient-service)
+    // Este é o ID que deve ser enviado como triagem_id ao backend
+    solicitacaoTriagemId: t.id || null,
+    // codigoTriagem: usar o triagem_id (FK que aponta para solicitacao), ou o id da solicitacao como fallback
+    codigoTriagem: t.triagem_id || t.id || null,
     pacienteId: t.paciente_id || (t.paciente && t.paciente.id) || null,
     TriagemId: t.triagem_id || null,
-    // patient info may be nested under `paciente`
-    nid: t.nid || (t.paciente && t.paciente.nid) || null,
-    nome: t.nome || (t.paciente && (t.paciente.nome_completo || t.paciente.nome)) || null,
-    apelido: t.apelido || (t.paciente && t.paciente.apelido) || null,
-    genero: t.genero || (t.paciente && t.paciente.genero) || null,
-    dataNascimento: t.data_nascimento || (t.paciente && t.paciente.data_nascimento) || null,
+    // patient info - tenta múltiplas fontes (paciente direto, nested, ou via solicitacao_triagem)
+    nid: t.nid || 
+         (t.paciente && t.paciente.nid) || 
+         (t.solicitacao_triagem && t.solicitacao_triagem.nid) || 
+         (t.solicitacao_triagem && t.solicitacao_triagem.paciente && t.solicitacao_triagem.paciente.nid) || 
+         null,
+    
+    nome: t.nome || 
+          (t.paciente && (t.paciente.nome_completo || t.paciente.nome)) || 
+          (t.solicitacao_triagem && (t.solicitacao_triagem.nome || (t.solicitacao_triagem.paciente && (t.solicitacao_triagem.paciente.nome_completo || t.solicitacao_triagem.paciente.nome)))) || 
+          null,
+    
+    apelido: t.apelido || 
+             (t.paciente && t.paciente.apelido) || 
+             (t.solicitacao_triagem && t.solicitacao_triagem.apelido) || 
+             (t.solicitacao_triagem && t.solicitacao_triagem.paciente && t.solicitacao_triagem.paciente.apelido) || 
+             null,
+    
+    genero: t.genero || 
+            (t.paciente && t.paciente.genero) || 
+            (t.solicitacao_triagem && t.solicitacao_triagem.genero) || 
+            (t.solicitacao_triagem && t.solicitacao_triagem.paciente && t.solicitacao_triagem.paciente.genero) || 
+            null,
+    
+    dataNascimento: t.data_nascimento || 
+                    (t.paciente && t.paciente.data_nascimento) || 
+                    (t.solicitacao_triagem && t.solicitacao_triagem.data_nascimento) || 
+                    (t.solicitacao_triagem && t.solicitacao_triagem.paciente && t.solicitacao_triagem.paciente.data_nascimento) || 
+                    null,
+    
     enfermeiroId: t.enfermeiro_id || null,
     enfermeiroNome: t.enfermeiro_nome || null,
     dataHoraInicio: t.data_inicio_triagem || t.data_hora_inicio || null,
@@ -139,9 +214,13 @@ const TriagemPaciente = () => {
     dataCadastro: t.created_at || t.data_solicitacao || t.data_cadastro || null,
     dataTriagem: t.data_triagem || t.created_at || null,
     // urgencia field from backend maps to estadoUrgencia
-    estadoUrgencia: t.urgencia || t.estado_urgencia || null,
+    estadoUrgencia: t.urgencia || t.estado_urgencia || (t.solicitacao_triagem && t.solicitacao_triagem.urgencia) || null,
     // tipo de utente may be an id on paciente; map to id for now
-    tipoUtente: (t.paciente && (t.paciente.tipo_utente || t.paciente.tipo_utente_id)) || t.tipo_utente || null,
+    tipoUtente: (t.paciente && (t.paciente.tipo_utente || t.paciente.tipo_utente_id)) || 
+                (t.solicitacao_triagem && t.solicitacao_triagem.paciente && (t.solicitacao_triagem.paciente.tipo_utente || t.solicitacao_triagem.paciente.tipo_utente_id)) || 
+                (t.solicitacao_triagem && (t.solicitacao_triagem.tipo_utente || t.solicitacao_triagem.tipo_utente_id)) ||
+                t.tipo_utente || 
+                null,
     tipoTriagem: t.tipo_triagem || null,
     status: t.status || null,
     consultaId: t.consulta_id || null,
@@ -229,7 +308,7 @@ const TriagemPaciente = () => {
 
     (async () => {
       try {
-        const res = await axios.get('http://localhost:8002/api/pacientes/tipos-utentes', { headers });
+        const res = await axios.get('http://196.3.100.216/api/tipos-utentes/', { headers });
         const data = res.data?.data || res.data || [];
         if (mounted) setPatientServiceTiposUtentes(Array.isArray(data) ? data : []);
       } catch (err) {
@@ -401,6 +480,15 @@ const TriagemPaciente = () => {
     });
 
   const realizarTriagem = (paciente) => {
+    console.log('🔍 realizarTriagem - Paciente selecionado:', {
+      id: paciente.id,
+      solicitacaoTriagemId: paciente.solicitacaoTriagemId,
+      pacienteId: paciente.pacienteId,
+      paciente_id: paciente.paciente_id,
+      nome: paciente.nome,
+      nid: paciente.nid,
+      dataNascimento: paciente.dataNascimento
+    });
     setPacienteSelecionado(paciente);
     form.resetFields();
     setImc(null);
@@ -452,6 +540,29 @@ const TriagemPaciente = () => {
   const handleFinishTriagem = (values) => {
     // Garantir que o IMC está incluído nos valores salvos
     const imcCalculado = calcularIMC(values.peso, values.altura);
+    
+    // ⚠️ CORREÇÃO CRÍTICA: 
+    // solicitacaoTriagemId = ID da SolicitacaoTriagem (de patient-service) - ISSO é o triagem_id que o backend espera
+    const solicitacaoTriagemId = pacienteSelecionado?.solicitacaoTriagemId || pacienteSelecionado?.id;
+    
+    // ⚠️ IMPORTANTE: paciente_id DEVE vir de pacienteId (o ID real do paciente)
+    // Tentar múltiplas fontes para garantir que temos um ID válido
+    const pacienteId = pacienteSelecionado?.pacienteId || 
+                       pacienteSelecionado?.paciente_id || 
+                       pacienteSelecionado?.paciente?.id ||
+                       values.paciente_id ||
+                       null;
+    
+    console.log('🔍 handleFinishTriagem - Dados resolvidos:', {
+      solicitacaoTriagemId,
+      pacienteId,
+      peso: values.peso,
+      altura: values.altura,
+      pressaoArterial: values.pressaoArterial,
+      nid: pacienteSelecionado?.nid,
+      nome: pacienteSelecionado?.nome
+    });
+    
     const triagemCompletada = {
       ...pacienteSelecionado,
       ...values,
@@ -459,8 +570,7 @@ const TriagemPaciente = () => {
       classificacaoIMC: getClassificacaoIMC(imcCalculado),
       dataTriagem: new Date().toLocaleString(),
       tipoTriagem: 'inicial',
-      id: pacienteSelecionado.triagem_id, // Manter o ID original da triagem
-      pacienteId: pacienteSelecionado.pacienteId || pacienteSelecionado.id, // Referência ao paciente original
+      pacienteId: pacienteId,
       status: 'triagem_concluida'
     };
 
@@ -469,9 +579,22 @@ const TriagemPaciente = () => {
       let sinaisPayload = null;
       let headers = null;
       try {
-      // Resolve paciente_id from several possible shapes on pacienteSelecionado
-      const resolvedPacienteId = pacienteSelecionado?.pacienteId || pacienteSelecionado?.paciente_id || pacienteSelecionado?.paciente?.id || pacienteSelecionado?.id || values.paciente_id || null;
-      if (!resolvedPacienteId) console.warn('⚠️ paciente_id não encontrado em pacienteSelecionado; valores disponíveis:', pacienteSelecionado, 'form values:', values);
+        // Validação: ensure paciente_id exists
+        if (!pacienteId) {
+          message.error('Dados inválidos: faltando paciente_id. Não é possível registrar sinais vitais sem identificar o paciente.');
+          console.error('❌ Erro crítico - paciente_id não encontrado:', {
+            pacienteSelecionado,
+            formValues: values
+          });
+          return;
+        }
+
+        if (!solicitacaoTriagemId) {
+          message.error('Dados inválidos: faltando triagem_id. Solicitação de triagem não identificada.');
+          console.error('❌ Erro crítico - solicitacaoTriagemId não encontrado');
+          return;
+        }
+        
         // Build payload with snake_case keys expected by the SinaisVitaisController
         const toNumber = v => {
           if (v === null || v === undefined || v === '') return null;
@@ -480,8 +603,8 @@ const TriagemPaciente = () => {
         };
 
         sinaisPayload = {
-          paciente_id: resolvedPacienteId || triagemCompletada.pacienteId || null,
-          triagem_id: triagemCompletada.id || null,
+          paciente_id: pacienteId,
+          triagem_id: solicitacaoTriagemId,
           peso: toNumber(values.peso),
           altura: toNumber(values.altura),
           imc: toNumber(imcCalculado),
@@ -492,39 +615,27 @@ const TriagemPaciente = () => {
           oximetria: toNumber(values.oximetria),
           glicemia_capilar: toNumber(values.glicemiaCapilar || values.glicemia_capilar),
           observacoes: values.observacoes || null,
-          tipo_triagem: triagemCompletada.tipoTriagem || 'inicial'
+          tipo_triagem: 'inicial'
         };
 
-        // Basic client-side validation: ensure paciente_id exists
-        if (!sinaisPayload.paciente_id) {
-          message.error('Dados inválidos: faltando paciente_id');
-          console.warn('Payload inválido antes de enviar sinais-vitais:', sinaisPayload);
-          setLocalTriagensRealizadas(prev => [triagemCompletada, ...prev]);
-          setLocalTriagensPendentes(prev => prev.filter(p => p.id !== pacienteSelecionado.id));
-          setIsModalVisible(false);
-          setActiveTab('2');
-          return;
-        }
-
-        // IMPORTANTE: Atualizar o status da triagem ANTES de criar/editar sinais vitais
-        // O backend valida que apenas triagens concluídas podem ter sinais vitais editados
-        const triagemId = pacienteSelecionado.triagem_id || pacienteSelecionado.TriagemId || pacienteSelecionado.codigoTriagem;
-        if (triagemId) {
-          try {
-            await triagemService.updateTriagemStatus(triagemId, 'triagem_concluida', token);
-          } catch (statusErr) {
-            // console.error('⚠️ Erro ao atualizar status da triagem:', statusErr);
-            // Continuar mesmo se falhar - o backend pode aceitar de qualquer forma
-          }
-        }
-
         // Use Sinais Vitais endpoint to store vitals related to triagem
+        // ✅ NOTA: O backend automaticamente marca a solicitação como concluída ao criar sinais vitais
         headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
         let created = null;
         let postError = null;
         try {
-          const res = await axios.post('http://127.0.0.1:8005/api/sinais-vitais', sinaisPayload, { headers });
+          // 🔍 DEBUG: Verificar exatamente o que está sendo enviado
+          console.log('🔍 DEBUG - Payload que será enviado ao sinais-vitais:');
+          console.log('  - paciente_id:', sinaisPayload.paciente_id, '(tipo:', typeof sinaisPayload.paciente_id, ')');
+          console.log('  - triagem_id:', sinaisPayload.triagem_id, '(tipo:', typeof sinaisPayload.triagem_id, ')');
+          console.log('  - peso:', sinaisPayload.peso);
+          console.log('  - altura:', sinaisPayload.altura);
+          console.log('  - pressao_arterial:', sinaisPayload.pressao_arterial);
+          console.log('  - Payload completo:', JSON.stringify(sinaisPayload, null, 2));
+          
+          const res = await axios.post('http://196.3.100.216/api/sinais-vitais/', sinaisPayload, { headers });
           created = extractSinais(res.data);
+          console.log('✅ Sinais vitais criados com sucesso:', created);
         } catch (errPost) {
           postError = errPost;
         }
@@ -534,7 +645,7 @@ const TriagemPaciente = () => {
           // Buscar o id do registro de sinais vitais existente
           let sinaisId = null;
           try {
-            const getRes = await axios.get(`http://127.0.0.1:8005/api/sinais-vitais/triagem/${sinaisPayload.triagem_id || triagemCompletada.id}`, { headers });
+            const getRes = await axios.get(`http://196.3.100.216/api/sinais-vitais/triagem/${sinaisPayload.triagem_id || triagemCompletada.id}`, { headers });
             const sinaisExistente = extractSinais(getRes.data);
             sinaisId = sinaisExistente?.id || sinaisExistente?.sinais_vitais_id || null;
           } catch (getErr) {
@@ -542,7 +653,7 @@ const TriagemPaciente = () => {
           }
           if (sinaisId) {
             try {
-              const putRes = await axios.put(`http://127.0.0.1:8005/api/sinais-vitais/${sinaisId}`, sinaisPayload, { headers });
+              const putRes = await axios.put(`http://196.3.100.216/api/sinais-vitais/${sinaisId}`, sinaisPayload, { headers });
               created = extractSinais(putRes.data);
               message.success('Sinais vitais atualizados com sucesso!');
             } catch (putErr) {
@@ -581,12 +692,83 @@ const TriagemPaciente = () => {
           setLocalTriagensPendentes(prev => prev.filter(p => p.id !== pacienteSelecionado.id));
           message.success('Triagem realizada e registrada no servidor (Sinais Vitais) com sucesso!');
           
-          // refresh triagens from server to keep UI in sync (com pequeno delay para dar tempo do backend processar)
+          // Atualizar triagens do backend de forma mais agressiva
           try { 
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (typeof refreshAll === 'function') await refreshAll(); 
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const token = localStorage.getItem('token');
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            
+            // Buscar triagens pendentes e remover a que foi concluída
+            try {
+              const resPendentes = await axios.get('http://196.3.100.216/api/triagens', {
+                headers,
+                params: { page: 1, per_page: 100, status: 'aguardando_triagem' }
+              });
+              const dataPendentes = resPendentes.data;
+              let pendentesAtualizadas = [];
+              if (Array.isArray(dataPendentes)) {
+                pendentesAtualizadas = dataPendentes;
+              } else if (dataPendentes.data && Array.isArray(dataPendentes.data)) {
+                pendentesAtualizadas = dataPendentes.data;
+              }
+              
+              // Garantir que removemos a triagem concluída (comparar por múltiplas formas de ID)
+              const pendentesFiltered = pendentesAtualizadas.filter(t => {
+                const tId = t.id || t.triagem_id;
+                const selectedId = pacienteSelecionado.id || pacienteSelecionado.solicitacaoTriagemId;
+                return tId !== selectedId && Number(tId) !== Number(selectedId);
+              });
+              
+              console.log('✅ Triagens pendentes atualizado - removida ID:', pacienteSelecionado.id, 'Restantes:', pendentesFiltered.length);
+              setLocalTriagensPendentes(pendentesFiltered.map(normalizeTriagem));
+            } catch(e1) {
+              console.warn('Falha ao atualizar triagens pendentes:', e1?.message);
+            }
+            
+            // Buscar triagens concluídas para manter sincronizado
+            try {
+              const resConcluidas = await axios.get('http://196.3.100.216/api/triagens/concluidas', {
+                headers,
+                params: { page: 1, per_page: 100 }
+              });
+              const dataConcluidas = resConcluidas.data;
+              let concluidasAtualizadas = [];
+              if (Array.isArray(dataConcluidas)) {
+                concluidasAtualizadas = dataConcluidas;
+              } else if (dataConcluidas.data && Array.isArray(dataConcluidas.data)) {
+                concluidasAtualizadas = dataConcluidas.data;
+              }
+              
+              // Enriquecer com dados de solicitação se necessário
+              const concluidasEnriquecidas = await Promise.all(
+                concluidasAtualizadas.map(async (tri) => {
+                  if (!tri.nid && tri.triagem_id) {
+                    try {
+                      const sr = await axios.get(`http://196.3.100.216/api/solicitacoes-triagem/${tri.triagem_id}`, { headers });
+                      const sol = sr.data?.data || sr.data;
+                      if (sol) {
+                        return {
+                          ...tri,
+                          nid: tri.nid || sol.nid || sol.paciente?.nid,
+                          data_nascimento: tri.data_nascimento || sol.data_nascimento || sol.paciente?.data_nascimento,
+                          nome: tri.nome || sol.nome || sol.paciente?.nome_completo
+                        };
+                      }
+                    } catch (err) {
+                      // Silencioso
+                    }
+                  }
+                  return tri;
+                })
+              );
+              
+              console.log('✅ Triagens concluídas atualizado:', concluidasEnriquecidas.length);
+              setLocalTriagensRealizadas(concluidasEnriquecidas.map(normalizeTriagem));
+            } catch(e2) {
+              console.warn('Falha ao atualizar triagens concluídas:', e2?.message);
+            }
           } catch(e){ 
-            console.warn('Falha ao dar refresh nas triagens:', e); 
+            console.warn('Falha geral ao fazer refresh nas triagens:', e?.message); 
           }
         } else {
           setLocalTriagensRealizadas(prev => [triagemCompletada, ...prev]);
@@ -599,6 +781,17 @@ const TriagemPaciente = () => {
       } catch (err) {
         console.error('Erro ao criar triagem no servidor (sinais-vitais):', err);
         console.error('Response status:', err.response?.status, 'data:', err.response?.data || err.message);
+        
+        // 🔍 DEBUG para erro 422
+        if (err.response?.status === 422) {
+          console.error('🔍 DEBUG 422 - Payload que falhou:');
+          console.error('  - sinaisPayload:', JSON.stringify(sinaisPayload, null, 2));
+          console.error('  - pacienteId:', pacienteId);
+          console.error('  - solicitacaoTriagemId:', solicitacaoTriagemId);
+          console.error('  - pacienteSelecionado:', JSON.stringify(pacienteSelecionado, null, 2));
+          console.error('  - Resposta do backend:', err.response?.data);
+        }
+        
         // show validation errors from server if available
         const resp = err.response?.data;
 
@@ -620,7 +813,7 @@ const TriagemPaciente = () => {
             // Ensure we have a solicitacao_triagem_id — create via Patient Service if missing
             if (!triagemPayload.triagem_id) {
               try {
-                const solicitacaoUrl = 'http://127.0.0.1:8002/api/solicitacoes-triagem';
+                const solicitacaoUrl = 'http://196.3.100.216/api/solicitacoes-triagem';
                 const solRes = await axios.post(solicitacaoUrl, {
                   paciente_id: triagemPayload.paciente_id,
                   urgencia: triagemPayload.estado_urgencia || 'normal',
@@ -656,16 +849,8 @@ const TriagemPaciente = () => {
               const newTriIdNum = Number(newTriId);
               sinaisPayload.triagem_id = Number.isNaN(newTriIdNum) ? newTriId : newTriIdNum;
               
-              // Atualizar status da triagem recém-criada ANTES de criar sinais vitais
               try {
-                await triagemService.updateTriagemStatus(newTriId, 'triagem_concluida', token);
-              } catch (statusErr) {
-                console.error('⚠️ Erro ao atualizar status da triagem (retry):', statusErr);
-                // Continuar mesmo se falhar
-              }
-              
-              try {
-                const retryRes = await axios.post('http://127.0.0.1:8005/api/sinais-vitais', sinaisPayload, { headers });
+                const retryRes = await axios.post('http://196.3.100.216/api/sinais-vitai/', sinaisPayload, { headers });
                 const createdRetry = extractSinais(retryRes.data);
                 if (createdRetry) {
                   const normalized = {
@@ -774,7 +959,7 @@ const TriagemPaciente = () => {
         };
 
         const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-        const res = await axios.put(`http://127.0.0.1:8005/api/sinais-vitais/${pacienteSelecionado.id}`, sinaisUpdate, { headers });
+        const res = await axios.put(`http://196.3.100.216/api/sinais-vitais/${pacienteSelecionado.id}`, sinaisUpdate, { headers });
 
         const updated = extractSinais(res.data);
 
@@ -866,7 +1051,7 @@ const TriagemPaciente = () => {
     try {
       
       const response = await axios.post(
-        `http://localhost:8005/api/triagens/agendar-consulta`,
+        `http://196.3.100.216/api/triagens/agendar-consulta`,
         payload,
         { headers }
       );
@@ -948,7 +1133,7 @@ const TriagemPaciente = () => {
       )
     },
     { title: 'NID', dataIndex: 'nid', key: 'nid' },
-    { title: 'Código Triagem', dataIndex: 'triagem_id', key: 'triagem_id' },
+    { title: 'Código Triagem', dataIndex: 'codigoTriagem', key: 'codigoTriagem' },
     { title: 'Nome Completo', dataIndex: 'nome', key: 'nome' },
 
     {

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_PATIENT_SERVICE_URL || 'http://localhost:8002/api';
+const API_URL = 'http://196.3.100.216/api';
 
 class PatientService {
     constructor() {
@@ -139,7 +139,7 @@ class PatientService {
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/pacientes`, {
+            const response = await axios.get(`${API_URL}/pacientes/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -192,7 +192,7 @@ class PatientService {
             
             console.log('📤 Criando paciente:', patientData); // DEBUG
             
-            const response = await axios.post(`${API_URL}/pacientes`, patientData, {
+            const response = await axios.post(`${API_URL}/pacientes/`, patientData, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',

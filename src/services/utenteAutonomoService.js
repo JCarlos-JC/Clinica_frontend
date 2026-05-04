@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // URL base do serviço de pacientes (porta 8002)
-const API_URL = process.env.REACT_APP_PATIENT_SERVICE_URL || 'http://localhost:8002/api';
+const API_URL = 'http://196.3.100.216/api';
 
 /**
  * Serviço para gerenciar utentes autônomos
@@ -17,7 +17,7 @@ class UtenteAutonomoService {
         try {
             const token = localStorage.getItem('token');
             
-            const response = await axios.get(`${API_URL}/utentes-autonomos`, {
+            const response = await axios.get(`${API_URL}/utentes-autonomos/`, {
                 params: {
                     paginate: 'false', // Buscar todos sem paginação
                     ...params
@@ -62,7 +62,7 @@ class UtenteAutonomoService {
             
             const token = localStorage.getItem('token');
             
-            const response = await axios.post(`${API_URL}/utentes-autonomos`, data, {
+            const response = await axios.post(`${API_URL}/utentes-autonomos/`, data, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',

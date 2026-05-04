@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // laboratory-service — porta 8003
-const API_BASE = process.env.REACT_APP_LABORATORY_SERVICE_URL || 'http://127.0.0.1:8003/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8003/api';
 
 const api = axios.create({
   baseURL: API_BASE,

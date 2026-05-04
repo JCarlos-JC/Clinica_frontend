@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://127.0.0.1:8007/api';
+const API_BASE = 'http://196.3.100.216/api';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -42,16 +42,52 @@ api.interceptors.response.use(
  * @returns {Promise} - Dados das consultas pendentes
  */
 const getConsultasPendentes = async (params = {}) => {
-  const response = await axios.get('http://127.0.0.1:8007/api/agenda/agendamentos', { 
-    params,
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('access_token') || localStorage.getItem('token')}`
+  try {
+    // Tentar primeiro o endpoint de agendamentos (consultas agendadas)
+    const agendamentosResponse = await api.get('http://196.3.100.216/api/agenda/agendamentos/', { params });
+    
+    console.log('📋 Agendamentos recebidos:', agendamentosResponse.data);
+    console.log('📊 Total de agendamentos:', agendamentosResponse.data?.data?.length || 0);
+    
+    // A resposta vem em formato paginado: { data: { data: [...], current_page, etc }, status: 'success' }
+    // Precisamos retornar no formato esperado pelo hook: { status: 'success', data: { data: [...] } }
+    if (agendamentosResponse.data?.status === 'success' && agendamentosResponse.data?.data) {
+      const paginatedData = agendamentosResponse.data.data;
+      
+      // Retornar mantendo a estrutura paginada para o hook extrair corretamente
+      return {
+        status: 'success',
+        data: paginatedData,  // Aqui já tem { data: [...], current_page, etc }
+        message: 'Agendamentos encontrados'
+      };
     }
-  });
-  
-  return response.data;
+    
+    // Se vazio, retornar estrutura paginada vazia
+    return {
+      status: 'success',
+      data: {
+        data: [],
+        current_page: 1,
+        total: 0,
+        per_page: 15
+      },
+      message: 'Nenhum agendamento encontrado'
+    };
+  } catch (error) {
+    console.error('❌ Erro ao buscar consultas pendentes:', error);
+    
+    // Retornar vazio em vez de erro para não quebrar a interface
+    return {
+      status: 'success',
+      data: {
+        data: [],
+        current_page: 1,
+        total: 0,
+        per_page: 15
+      },
+      message: 'Nenhum agendamento disponível'
+    };
+  }
 };
 
 /**
@@ -60,8 +96,13 @@ const getConsultasPendentes = async (params = {}) => {
  * @returns {Promise} - Dados das consultas realizadas
  */
 const getConsultasRealizadas = async (params = {}) => {
-  const response = await api.get('/consultas/realizadas', { params });
-  return response.data;
+  try {
+    const response = await api.get('/consultas/realizadas/', { params });
+    return response.data;
+  } catch (error) {
+    console.warn('⚠️ Histórico de consultas não disponível:', error.message);
+    throw error;
+  }
 };
 
 /**
@@ -149,14 +190,21 @@ const finalizarConsulta = async (consultaId, payload) => {
     data_coleta: toISODate(exame.dataColeta || exame.data_coleta) || null,
     observacoes: exame.observacoes || '',
   }));
+  
   const fullPayload = {
-    agendamento_id: consultaId,
+    agendamentoId: consultaId,  // Changed to camelCase to match FinalizarConsultaRequest
     ...payload,
     exames: examesTransformados,
   };
 
+  console.log('📤 Enviando finalização de consulta:', {
+    consultaId,
+    endpoint: `/api/consultas/${consultaId}/finalizar`,
+    payload: fullPayload
+  });
+
   const response = await axios.post(
-    'http://127.0.0.1:8007/api/consultas/finalizar',
+    `http://196.3.100.216/api/consultas/${consultaId}/finalizar`,
     fullPayload,
     {
       headers: {
@@ -167,6 +215,7 @@ const finalizarConsulta = async (consultaId, payload) => {
     }
   );
 
+  console.log('✅ Consulta finalizada com sucesso:', response.data);
   return response.data;
 };
 
@@ -223,7 +272,7 @@ const transferirMedico = async (agendamentoId, payload) => {
   }
   
   const response = await axios.post(
-    `http://127.0.0.1:8007/api/agenda/consultas-agendadas/${id}/transferir-medico`,
+    `http://196.3.100.216/api/agenda/consultas-agendadas/${id}/transferir-medico`,
     payload,
     {
       headers: {
@@ -259,8 +308,13 @@ const transferirEspecialidade = async (consultaId, payload) => {
  * @returns {Promise} - Pacientes com exames concluídos
  */
 const getPacientesComExames = async (params = {}) => {
-  const response = await api.get('/consultas/retorno-exames', { params });
-  return response.data;
+  try {
+    const response = await api.get('/consultas/retorno-exames/', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Erro ao buscar pacientes com exames:', error);
+    throw error;
+  }
 };
 
 /**
@@ -326,8 +380,35 @@ const getExames = async (params = {}) => {
  * @returns {Promise} - Lista de exames pendentes
  */
 const getExamesPendentes = async () => {
-  const response = await api.get('/exames/pendentes');
-  return response.data;
+  try {
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    const tokenPreview = token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'Missing';
+    console.log('🔍 Buscando exames pendentes com token:', tokenPreview);
+    
+    const response = await api.get('/laboratorio/agendamentos/pendentes/');
+    console.log('✅ Exames pendentes carregados:', response.data);
+    return response.data;
+  } catch (error) {
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    const tokenPreview = token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'Missing';
+    const status = error.response?.status;
+    const message = error.response?.data?.message || error.message;
+    
+    console.error('❌ Erro ao buscar exames pendentes:', {
+      status,
+      message,
+      tokenPreview,
+      tokenPresent: !!token,
+      url: error.config?.url,
+      authHeader: error.config?.headers?.Authorization?.substring(0, 30) + '...'
+    });
+    
+    // Se for 401, pode ser token expirado - limpar e forçar novo login
+    if (status === 401) {
+      console.warn('⚠️ Token inválido/expirado. Usuário precisa fazer login novamente.');
+    }
+    throw error;
+  }
 };
 
 /**
@@ -627,7 +708,25 @@ const consultaService = {
   recusarTransferencia,
   finalizarTransferencia,
   cancelarTransferencia,
-  processarPagamentoTransferencia
+  processarPagamentoTransferencia,
+  
+  // Teste/Debug
+  validateToken: async () => {
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      if (!token) {
+        console.warn('❌ Nenhum token encontrado');
+        return { valid: false, reason: 'No token' };
+      }
+      
+      const response = await api.get('/auth/me');
+      console.log('✅ Token válido:', response.data);
+      return { valid: true, data: response.data };
+    } catch (error) {
+      console.error('❌ Token inválido/expirado:', error.response?.data || error.message);
+      return { valid: false, reason: error.response?.data?.message || error.message };
+    }
+  }
 };
 
 export default consultaService;

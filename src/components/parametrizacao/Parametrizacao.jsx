@@ -187,6 +187,8 @@ const Parametrizacao = () => {
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [loadingPerfis, setLoadingPerfis] = useState(false);
   const [loadingPrecosConsultas, setLoadingPrecosConsultas] = useState(false);
+  const [loadingTiposExame, setLoadingTiposExame] = useState(false);
+  const [loadingExames, setLoadingExames] = useState(false);
 
   // Buscar especialidades da API ao montar o componente
   useEffect(() => {
@@ -210,7 +212,9 @@ const Parametrizacao = () => {
       fetchUsuarios(),
       fetchPerfis(),
       fetchPrecosConsultas(),
-      fetchServicos()
+      fetchServicos(),
+      fetchTiposExame(),
+      fetchExames()
     ]).catch(error => {
       console.error('❌ Erro ao carregar dados iniciais:', error);
     });
@@ -222,7 +226,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/especialidades', {
+      const response = await axios.get('http://196.3.100.216/api/especialidades/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -249,7 +253,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/tipos-utente', {
+      const response = await axios.get('http://196.3.100.216/api/tipos-utente/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -270,11 +274,11 @@ const Parametrizacao = () => {
     }
   };
 
-  // Função para buscar serviços da API
+  // Função para buscar serviços da API (preços de especialidades)
   const fetchServicos = async () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      const response = await axios.get('http://127.0.0.1:8004/api/services/precos-especialidades', {
+      const response = await axios.get('http://196.3.100.216/api/precos-especialidades/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json'
@@ -311,7 +315,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/distritos', {
+      const response = await axios.get('http://196.3.100.216/api/distritos/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -338,7 +342,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/provincias', {
+      const response = await axios.get('http://196.3.100.216/api/provincias/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -365,7 +369,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/bairros', {
+      const response = await axios.get('http://196.3.100.216/api/bairros/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -392,7 +396,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/unidades-organica', {
+      const response = await axios.get('http://196.3.100.216/api/unidades-organicas/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -419,7 +423,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/racas', {
+      const response = await axios.get('http://196.3.100.216/api/racas/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -446,7 +450,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/medicamentos', {
+      const response = await axios.get('http://196.3.100.216/api/medicamentos/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -473,7 +477,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/formas-medicamento', {
+      const response = await axios.get('http://196.3.100.216/api/formas-medicamento/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -499,7 +503,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/vias-administracao', {
+      const response = await axios.get('http://196.3.100.216/api/vias-administracao/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -525,7 +529,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/tipos-documento', {
+      const response = await axios.get('http://196.3.100.216/api/tipos-documento/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -551,7 +555,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/graus-parentesco', {
+      const response = await axios.get('http://196.3.100.216/api/graus-parentesco/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -577,7 +581,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/metodos-pagamento', {
+      const response = await axios.get('http://196.3.100.216/api/metodos-pagamento/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -603,7 +607,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/tipos-consulta', {
+      const response = await axios.get('http://196.3.100.216/api/tipos-consulta/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -623,13 +627,65 @@ const Parametrizacao = () => {
     }
   };
 
+  // Função para buscar tipos de exame
+  const fetchTiposExame = async () => {
+    setLoadingTiposExame(true);
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      
+      const response = await axios.get('http://196.3.100.216/api/tipos-exame/', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const tiposExameData = response?.data?.data || response?.data || [];
+      setTiposExame(tiposExameData);
+      console.log('✅ Tipos de exame carregados:', tiposExameData);
+    } catch (error) {
+      console.error('❌ Erro ao buscar tipos de exame:', error);
+      message.error('Erro ao carregar tipos de exame');
+      setTiposExame(tiposExameMock);
+    } finally {
+      setLoadingTiposExame(false);
+    }
+  };
+
+  // Função para buscar exames
+  const fetchExames = async () => {
+    setLoadingExames(true);
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      
+      const response = await axios.get('http://196.3.100.216/api/exames/', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const examesData = response?.data?.data || response?.data || [];
+      setExames(examesData);
+      console.log('✅ Exames carregados:', examesData);
+    } catch (error) {
+      console.error('❌ Erro ao buscar exames:', error);
+      message.error('Erro ao carregar exames');
+      setExames(examesMock);
+    } finally {
+      setLoadingExames(false);
+    }
+  };
+
   // Função para buscar funções de especialidade
   const fetchFuncoesEspecialidade = async () => {
     setLoadingFuncoesEspecialidade(true);
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/funcoes-especialidade', {
+      const response = await axios.get('http://196.3.100.216/api/funcoes-especialidade/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -655,7 +711,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8001/api/users', {
+      const response = await axios.get('http://196.3.100.216/api/users/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -681,7 +737,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8001/api/roles', {
+      const response = await axios.get('http://196.3.100.216/api/roles/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -707,7 +763,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://127.0.0.1:8004/api/precos-consultas', {
+      const response = await axios.get('http://196.3.100.216/api/precos-consultas/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -738,6 +794,14 @@ const Parametrizacao = () => {
       title: 'Descrição',
       dataIndex: 'descricao',
       key: 'descricao',
+    },
+    {
+      title: 'Estado',
+      dataIndex: 'ativo',
+      key: 'ativo',
+      render: (ativo) => (
+        <Tag color={ativo ? 'green' : 'red'}>{ativo ? 'Ativo' : 'Inativo'}</Tag>
+      )
     },
     {
       title: 'Ação',
@@ -862,34 +926,42 @@ const Parametrizacao = () => {
   const examesColumns = [
     {
       title: 'Nome do Tipo de Exame',
-      dataIndex: 'tipoExame',
       key: 'tipoExame',
-      render: (id) => {
-        const te = tiposExame.find(t => t.id === id);
-        return te ? te.nome : '-';
+      render: (text, record) => {
+        if (record.tipo_exame) {
+          return record.tipo_exame.nome || record.tipo_exame.id || '-';
+        }
+        if (record.tipoExame) {
+          return record.tipoExame.nome || record.tipoExame.id || '-';
+        }
+        return '-';
       }
     },
     {
       title: 'Tipo de Utente',
-      dataIndex: 'tipoUtente',
       key: 'tipoUtente',
-      render: (id) => {
-        const tu = tiposUtente.find(t => t.id === id);
-        return tu ? tu.nome : '-';
+      render: (text, record) => {
+        if (record.tipo_utente) {
+          return record.tipo_utente.nome || record.tipo_utente.id || '-';
+        }
+        if (record.tipoUtente) {
+          return record.tipoUtente.nome || record.tipoUtente.id || '-';
+        }
+        return '-';
       }
     },
     {
       title: 'Valor a Pagar',
       dataIndex: 'valor',
       key: 'valor',
-      render: (valor) => valor + ' MZN',
+      render: (valor) => valor ? `${valor} MZN` : '-',
     },
     {
       title: 'Estado',
-      dataIndex: 'estado',
-      key: 'estado',
-      render: (estado) => (
-        <Tag color={estado === 'Ativo' ? 'green' : 'red'}>{estado}</Tag>
+      dataIndex: 'ativo',
+      key: 'ativo',
+      render: (ativo) => (
+        <Tag color={ativo ? 'green' : 'red'}>{ativo ? 'Ativo' : 'Inativo'}</Tag>
       )
     },
     {
@@ -1578,9 +1650,18 @@ const Parametrizacao = () => {
     } else if (type === 'precoConsulta') {
       form.setFieldsValue({ tipo_consulta_id: record.tipo_consulta_id, tipo_utente_id: record.tipo_utente_id, valor: record.valor, descricao: record.descricao, ativo: record.ativo });
     } else if (type === 'tipoExame') {
-      form.setFieldsValue({ nome: record.nome, descricao: record.descricao });
+      form.setFieldsValue({ 
+        nome: record.nome, 
+        descricao: record.descricao,
+        ativo: record.ativo !== undefined ? record.ativo : true
+      });
     } else if (type === 'exame') {
-      form.setFieldsValue({ tipoExame: record.tipoExame, tipoUtente: record.tipoUtente, valor: record.valor, estado: record.estado });
+      form.setFieldsValue({ 
+        tipoExame: record.tipo_exame_id || record.tipoExame?.id || record.tipoExame,
+        tipoUtente: record.tipo_utente_id || record.tipoUtente?.id || record.tipoUtente,
+        valor: record.valor, 
+        estado: record.ativo ? 'Ativo' : 'Inativo'
+      });
     } else if (type === 'raca') {
       form.setFieldsValue({ nome: record.nome, codigo: record.codigo, descricao: record.descricao, ativo: record.ativo });
     } else if (type === 'medicamento') {
@@ -1646,7 +1727,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar especialidade existente
-            await axios.put(`http://127.0.0.1:8004/api/especialidades/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/especialidades/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1656,7 +1737,7 @@ const Parametrizacao = () => {
             message.success('Especialidade atualizada com sucesso!');
           } else {
             // Criar nova especialidade
-            await axios.post('http://127.0.0.1:8004/api/especialidades', values, {
+            await axios.post('http://196.3.100.216/api/especialidades/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1684,7 +1765,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar serviço existente
-            await axios.put(`http://127.0.0.1:8004/api/services/precos-especialidades/${editRecord.id}`, payload, {
+            await axios.put(`http://196.3.100.216/api/precos-especialidades/${editRecord.id}`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1694,7 +1775,7 @@ const Parametrizacao = () => {
             message.success('Serviço atualizado com sucesso!');
           } else {
             // Criar novo serviço
-            await axios.post('http://127.0.0.1:8004/api/services/precos-especialidades', payload, {
+            await axios.post('http://196.3.100.216/api/precos-especialidades/', payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1717,7 +1798,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de utente existente
-            await axios.put(`http://127.0.0.1:8004/api/tipos-utente/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/tipos-utente/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1727,7 +1808,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Utente atualizado com sucesso!');
           } else {
             // Criar novo tipo de utente
-            await axios.post('http://127.0.0.1:8004/api/tipos-utente', values, {
+            await axios.post('http://196.3.100.216/api/tipos-utente/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1752,23 +1833,87 @@ const Parametrizacao = () => {
             setConsultas([...consultas, { id: Date.now(), ...values }]);
           }
         } else if (editType === 'tipoExame') {
+          const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+          
+          // Preparar payload com valores padrão para campos obrigatórios do backend
+          const payload = {
+            nome: values.nome,
+            descricao: values.descricao || '',
+            categoria: 'Geral', // Valor padrão
+            preco_padrao: 0, // Valor padrão
+            ativo: values.ativo !== undefined ? values.ativo : true
+          };
+          
+          console.log('📦 Payload do tipo de exame:', payload);
+          
           if (editRecord) {
-            setTiposExame(tiposExame.map(t => t.id === editRecord.id ? { ...t, ...values } : t));
+            // Atualizar tipo de exame existente
+            await axios.put(`http://196.3.100.216/api/tipos-exame/${editRecord.id}`, payload, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Tipo de Exame atualizado com sucesso!');
           } else {
-            setTiposExame([...tiposExame, { id: Date.now(), ...values }]);
+            // Criar novo tipo de exame
+            await axios.post('http://196.3.100.216/api/tipos-exame/', payload, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Tipo de Exame criado com sucesso!');
           }
+          
+          // Recarregar lista de tipos de exame
+          await fetchTiposExame();
         } else if (editType === 'exame') {
+          const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+          
+          // Preparar payload com nomes de campos corretos do backend
+          const payload = {
+            tipo_exame_id: values.tipoExame,
+            tipo_utente_id: values.tipoUtente,
+            valor: parseFloat(values.valor),
+            ativo: values.estado === 'Ativo' || values.ativo === true,
+            descricao: ''
+          };
+          
+          console.log('📦 Payload do exame:', payload);
+          
           if (editRecord) {
-            setExames(exames.map(e => e.id === editRecord.id ? { ...e, ...values } : e));
+            // Atualizar exame existente
+            await axios.put(`http://196.3.100.216/api/exames/${editRecord.id}`, payload, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Exame atualizado com sucesso!');
           } else {
-            setExames([...exames, { id: Date.now(), ...values }]);
+            // Criar novo exame
+            await axios.post('http://196.3.100.216/api/exames/', payload, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Exame criado com sucesso!');
           }
+          
+          // Recarregar lista de exames
+          await fetchExames();
         } else if (editType === 'provincia') {
           const token = localStorage.getItem('access_token') || localStorage.getItem('token');
           
           if (editRecord) {
             // Atualizar província existente
-            await axios.put(`http://127.0.0.1:8004/api/provincias/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/provincias/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1778,7 +1923,7 @@ const Parametrizacao = () => {
             message.success('Província atualizada com sucesso!');
           } else {
             // Criar nova província
-            await axios.post('http://127.0.0.1:8004/api/provincias', values, {
+            await axios.post('http://196.3.100.216/api/provincias/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1795,7 +1940,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar bairro existente
-            await axios.put(`http://127.0.0.1:8004/api/bairros/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/bairros/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1805,7 +1950,7 @@ const Parametrizacao = () => {
             message.success('Bairro atualizado com sucesso!');
           } else {
             // Criar novo bairro
-            await axios.post('http://127.0.0.1:8004/api/bairros', values, {
+            await axios.post('http://196.3.100.216/api/bairros/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1822,7 +1967,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar distrito existente
-            await axios.put(`http://127.0.0.1:8004/api/distritos/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/distritos/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1832,7 +1977,7 @@ const Parametrizacao = () => {
             message.success('Distrito atualizado com sucesso!');
           } else {
             // Criar novo distrito
-            await axios.post('http://127.0.0.1:8004/api/distritos', values, {
+            await axios.post('http://196.3.100.216/api/distritos/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1849,7 +1994,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar unidade orgânica existente
-            await axios.put(`http://127.0.0.1:8004/api/unidades-organica/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/unidades-organicas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1859,7 +2004,7 @@ const Parametrizacao = () => {
             message.success('Unidade Orgânica atualizada com sucesso!');
           } else {
             // Criar nova unidade orgânica
-            await axios.post('http://127.0.0.1:8004/api/unidades-organica', values, {
+            await axios.post('http://196.3.100.216/api/unidades-organicas/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1876,7 +2021,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar raça existente
-            await axios.put(`http://127.0.0.1:8004/api/racas/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/racas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1886,7 +2031,7 @@ const Parametrizacao = () => {
             message.success('Raça atualizada com sucesso!');
           } else {
             // Criar nova raça
-            await axios.post('http://127.0.0.1:8004/api/racas', values, {
+            await axios.post('http://196.3.100.216/api/racas/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1903,7 +2048,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar medicamento existente
-            await axios.put(`http://127.0.0.1:8004/api/medicamentos/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/medicamentos/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1913,7 +2058,7 @@ const Parametrizacao = () => {
             message.success('Medicamento atualizado com sucesso!');
           } else {
             // Criar novo medicamento
-            await axios.post('http://127.0.0.1:8004/api/medicamentos', values, {
+            await axios.post('http://196.3.100.216/api/medicamentos/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1930,7 +2075,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar forma de medicamento existente
-            await axios.put(`http://127.0.0.1:8004/api/formas-medicamento/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/formas-medicamento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1940,7 +2085,7 @@ const Parametrizacao = () => {
             message.success('Forma de Medicamento atualizada com sucesso!');
           } else {
             // Criar nova forma de medicamento
-            await axios.post('http://127.0.0.1:8004/api/formas-medicamento', values, {
+            await axios.post('http://196.3.100.216/api/formas-medicamento/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1957,7 +2102,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar via de administração existente
-            await axios.put(`http://127.0.0.1:8004/api/vias-administracao/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/vias-administracao/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1967,7 +2112,7 @@ const Parametrizacao = () => {
             message.success('Via de Administração atualizada com sucesso!');
           } else {
             // Criar nova via de administração
-            await axios.post('http://127.0.0.1:8004/api/vias-administracao', values, {
+            await axios.post('http://196.3.100.216/api/vias-administracao/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1984,7 +2129,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de documento existente
-            await axios.put(`http://127.0.0.1:8004/api/tipos-documento/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/tipos-documento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1994,7 +2139,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Documento atualizado com sucesso!');
           } else {
             // Criar novo tipo de documento
-            await axios.post('http://127.0.0.1:8004/api/tipos-documento', values, {
+            await axios.post('http://196.3.100.216/api/tipos-documento/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2011,7 +2156,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar grau de parentesco existente
-            await axios.put(`http://127.0.0.1:8004/api/graus-parentesco/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/graus-parentesco/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2021,7 +2166,7 @@ const Parametrizacao = () => {
             message.success('Grau de Parentesco atualizado com sucesso!');
           } else {
             // Criar novo grau de parentesco
-            await axios.post('http://127.0.0.1:8004/api/graus-parentesco', values, {
+            await axios.post('http://196.3.100.216/api/graus-parentesco/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2038,7 +2183,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar método de pagamento existente
-            await axios.put(`http://127.0.0.1:8004/api/metodos-pagamento/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/metodos-pagamento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2048,7 +2193,7 @@ const Parametrizacao = () => {
             message.success('Método de Pagamento atualizado com sucesso!');
           } else {
             // Criar novo método de pagamento
-            await axios.post('http://127.0.0.1:8004/api/metodos-pagamento', values, {
+            await axios.post('http://196.3.100.216/api/metodos-pagamento/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2065,7 +2210,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de consulta existente
-            await axios.put(`http://127.0.0.1:8004/api/tipos-consulta/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/tipos-consulta/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2075,7 +2220,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Consulta atualizado com sucesso!');
           } else {
             // Criar novo tipo de consulta
-            await axios.post('http://127.0.0.1:8004/api/tipos-consulta', values, {
+            await axios.post('http://196.3.100.216/api/tipos-consulta/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2092,7 +2237,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar função de especialidade existente
-            await axios.put(`http://127.0.0.1:8004/api/funcoes-especialidade/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/funcoes-especialidade/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2102,7 +2247,7 @@ const Parametrizacao = () => {
             message.success('Função de Especialidade atualizada com sucesso!');
           } else {
             // Criar nova função de especialidade
-            await axios.post('http://127.0.0.1:8004/api/funcoes-especialidade', values, {
+            await axios.post('http://196.3.100.216/api/funcoes-especialidade/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2120,7 +2265,7 @@ const Parametrizacao = () => {
           if (editRecord) {
             // Atualizar usuário existente - remover password se existir
             const { password, ...updateValues } = values;
-            await axios.put(`http://127.0.0.1:8001/api/users/${editRecord.id}`, updateValues, {
+            await axios.put(`http://196.3.100.216/api/users/${editRecord.id}`, updateValues, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2130,7 +2275,7 @@ const Parametrizacao = () => {
             message.success('Usuário atualizado com sucesso!');
           } else {
             // Criar novo usuário
-            await axios.post('http://127.0.0.1:8001/api/users', values, {
+            await axios.post('http://196.3.100.216/api/users/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2147,7 +2292,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar perfil existente
-            await axios.put(`http://127.0.0.1:8001/api/roles/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/roles/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2157,7 +2302,7 @@ const Parametrizacao = () => {
             message.success('Perfil atualizado com sucesso!');
           } else {
             // Criar novo perfil
-            await axios.post('http://127.0.0.1:8001/api/roles', values, {
+            await axios.post('http://196.3.100.216/api/roles/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2174,7 +2319,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar preço de consulta existente
-            await axios.put(`http://127.0.0.1:8004/api/precos-consultas/${editRecord.id}`, values, {
+            await axios.put(`http://196.3.100.216/api/precos-consultas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2184,7 +2329,7 @@ const Parametrizacao = () => {
             message.success('Preço de Consulta atualizado com sucesso!');
           } else {
             // Criar novo preço de consulta
-            await axios.post('http://127.0.0.1:8004/api/precos-consultas', values, {
+            await axios.post('http://196.3.100.216/api/precos-consultas/', values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2486,6 +2631,7 @@ const Parametrizacao = () => {
           columns={examesColumns}
           dataSource={exames}
           rowKey="id"
+          loading={loadingExames}
           pagination={{
             pageSize: 3,
             showSizeChanger: false,
@@ -2543,8 +2689,14 @@ const Parametrizacao = () => {
             <Form.Item name="nome" label="Nome do Tipo de Exame" rules={[{ required: true, message: 'Obrigatório' }]}> 
               <Input placeholder="Digite o nome do tipo de exame" />
             </Form.Item>
-            <Form.Item name="descricao" label="Descrição" rules={[{ required: true, message: 'Obrigatório' }]}> 
+            <Form.Item name="descricao" label="Descrição" rules={[{ required: false }]}> 
               <Input.TextArea placeholder="Digite a descrição do tipo de exame" rows={3} />
+            </Form.Item>
+            <Form.Item name="ativo" label="Estado" rules={[{ required: true, message: 'Obrigatório' }]}> 
+              <Radio.Group>
+                <Radio value={true}>Ativo</Radio>
+                <Radio value={false}>Inativo</Radio>
+              </Radio.Group>
             </Form.Item>
           </>
             ) : editType === 'exame' ? (

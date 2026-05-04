@@ -164,7 +164,7 @@ const Consultorio = () => {
         const token = localStorage.getItem('access_token') || localStorage.getItem('token');
         
         // Buscar médicos da porta 8007 (consultation-service)
-        const response = await axios.get('http://127.0.0.1:8007/api/medicos', {
+        const response = await axios.get('http://196.3.100.216/api/medicos/', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Accept': 'application/json',
@@ -197,7 +197,7 @@ const Consultorio = () => {
         const token = localStorage.getItem('access_token') || localStorage.getItem('token');
         
         // Buscar especialidades da porta 8007 (consultation-service)
-        const response = await axios.get('http://127.0.0.1:8007/api/especialidades', {
+        const response = await axios.get('http://196.3.100.216/api/especialidades/', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Accept': 'application/json',
@@ -344,7 +344,7 @@ const Consultorio = () => {
       console.log('🔍 Buscando médicos por especialidade:', especialidade);
       
       // Buscar médicos filtrados por especialidade da porta 8007
-      const response = await axios.get(`http://127.0.0.1:8007/api/medicos?especialidade=${encodeURIComponent(especialidade)}`, {
+      const response = await axios.get(`http://196.3.100.216/api/medicos?especialidade=${encodeURIComponent(especialidade)}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',

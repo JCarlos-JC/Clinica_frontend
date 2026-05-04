@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // patient-service — porta 8002
-const API_BASE = process.env.REACT_APP_PATIENT_SERVICE_URL || 'http://127.0.0.1:8002/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8002/api';
 
 const api = axios.create({
   baseURL: API_BASE,
