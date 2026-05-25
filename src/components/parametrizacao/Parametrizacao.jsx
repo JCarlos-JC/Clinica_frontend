@@ -1695,7 +1695,15 @@ const Parametrizacao = () => {
     } else if (type === 'funcaoEspecialidade') {
       form.setFieldsValue({ nome: record.nome, codigo: record.codigo, descricao: record.descricao, pode_prescrever: record.pode_prescrever, pode_solicitar_exames: record.pode_solicitar_exames, pode_criar_prontuario: record.pode_criar_prontuario, ativo: record.ativo });
     } else if (type === 'usuario') {
-      form.setFieldsValue({ nome: record.nome, email: record.email, cargo: record.cargo, ativo: record.ativo });
+      // Extract perfis IDs from the perfis relationship or array
+      const perfisIds = record.perfis?.map(p => p.id) || [];
+      form.setFieldsValue({ 
+        nome: record.nome, 
+        email: record.email, 
+        cargo: record.cargo, 
+        perfis: perfisIds,
+        ativo: record.ativo 
+      });
     } else if (type === 'perfil') {
       form.setFieldsValue({ nome: record.nome, codigo: record.codigo, descricao: record.descricao, ativo: record.ativo });
     }
@@ -2263,8 +2271,8 @@ const Parametrizacao = () => {
           const token = localStorage.getItem('access_token') || localStorage.getItem('token');
           
           if (editRecord) {
-            // Atualizar usuário existente - remover password se existir
-            const { password, ...updateValues } = values;
+            // Atualizar usuário existente - remover senha se existir
+            const { senha, ...updateValues } = values;
             await axios.put(`http://196.3.100.216/api/users/${editRecord.id}`, updateValues, {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -2274,8 +2282,19 @@ const Parametrizacao = () => {
             });
             message.success('Usuário atualizado com sucesso!');
           } else {
-            // Criar novo usuário
-            await axios.post('http://196.3.100.216/api/users/', values, {
+            // Criar novo usuário - usar nome correto dos campos
+            const payload = {
+              nome: values.nome,
+              email: values.email,
+              senha: values.senha,  // Use 'senha' instead of 'password'
+              cargo: values.cargo || null,
+              perfis: values.perfis || [],
+              ativo: values.ativo !== undefined ? values.ativo : true
+            };
+            
+            console.log('📦 Payload do usuário:', payload);
+            
+            await axios.post('http://196.3.100.216/api/users/', payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -5219,16 +5238,19 @@ const Parametrizacao = () => {
                     <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Insira um email válido' }]}> 
                       <Input placeholder="Digite o email (ex: usuario@clinica.com)" />
                     </Form.Item>
-                    <Form.Item name="cargo" label="Cargo/Função" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                      <Select placeholder="Selecione o cargo" showSearch optionFilterProp="children">
-                        {funcoesEspecialidade.map(funcao => (
-                          <Select.Option key={funcao.id} value={funcao.nome}>{funcao.nome}</Select.Option>
+                    <Form.Item name="cargo" label="Cargo/Função" rules={[{ required: false, message: 'Obrigatório' }]}> 
+                      <Input placeholder="Digite o cargo/função" />
+                    </Form.Item>
+                    <Form.Item name="perfis" label="Perfis de Acesso" rules={[{ required: true, message: 'Selecione pelo menos um perfil' }]}> 
+                      <Select mode="multiple" placeholder="Selecione os perfis" showSearch optionFilterProp="children">
+                        {perfis.map(perfil => (
+                          <Select.Option key={perfil.id} value={perfil.id}>{perfil.nome}</Select.Option>
                         ))}
                       </Select>
                     </Form.Item>
                     {!editRecord && (
-                      <Form.Item name="password" label="Senha" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                        <Input.Password placeholder="Digite a senha" />
+                      <Form.Item name="senha" label="Senha" rules={[{ required: true, message: 'Obrigatório', min: 8, message: 'Mínimo 8 caracteres' }]}> 
+                        <Input.Password placeholder="Digite a senha (mínimo 8 caracteres)" />
                       </Form.Item>
                     )}
                     <Form.Item name="ativo" label="Estado" rules={[{ required: true, message: 'Obrigatório' }]}> 
