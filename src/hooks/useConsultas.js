@@ -1,6 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import consultaService from '../services/consultaService';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import consultaService, { normalizarPacienteConsulta } from '../services/consultaService';
 import { message } from 'antd';
+import { normalizeApiList } from '../services/apiConfig';
+import { invalidateCachedRequest, peekCachedRequest, setCachedRequest } from '../services/requestCache';
+import { isOutOfConsultationQueue } from '../utils/patientWorkflowStatus';
+
+const getConsultaIdentifiers = (consulta = {}) => [
+  consulta.id,
+  consulta.consulta_id,
+  consulta.consultaId,
+  consulta.agendamento_id,
+  consulta.agendamentoId,
+  consulta.consulta?.id,
+  consulta.agendamento?.id
+].filter(value => value !== undefined && value !== null).map(value => String(value));
+
+const consultaMatchesId = (consulta, consultaId) => {
+  const targetId = String(consultaId);
+  return getConsultaIdentifiers(consulta).includes(targetId);
+};
+
 
 /**
  * Hook customizado para gerenciar consultas médicas
@@ -8,8 +28,9 @@ import { message } from 'antd';
  * @param {number|string} medicoId - ID do médico logado (opcional) para filtrar consultas automaticamente
  */
 export default function useConsultas(medicoId = null) {
-  const [consultasPendentes, setConsultasPendentes] = useState([]);
-  const [consultasRealizadas, setConsultasRealizadas] = useState([]);
+  const snapshotSuffix = medicoId || 'all';
+  const [consultasPendentes, setConsultasPendentes] = useState(() => peekCachedRequest(`consultas:pendentes:last:${snapshotSuffix}`, null, { persist: true, allowStale: true }) || []);
+  const [consultasRealizadas, setConsultasRealizadas] = useState(() => peekCachedRequest(`consultas:realizadas:last:${snapshotSuffix}`, null, { persist: true, allowStale: true }) || []);
   const [pacientesComExames, setPacientesComExames] = useState([]);
   const [examesPendentes, setExamesPendentes] = useState([]);
   const [transferencias, setTransferencias] = useState([]);
@@ -18,12 +39,19 @@ export default function useConsultas(medicoId = null) {
   const [loadingExames, setLoadingExames] = useState(false);
   const [loadingTransferencias, setLoadingTransferencias] = useState(false);
   const [error, setError] = useState(null);
+  const fetchPendentesSeqRef = useRef(0);
 
   /**
    * Buscar consultas pendentes (pacientes aguardando atendimento)
    */
   const fetchConsultasPendentes = useCallback(async (params = {}) => {
-    setLoadingPendentes(true);
+    const fetchSeq = fetchPendentesSeqRef.current + 1;
+    fetchPendentesSeqRef.current = fetchSeq;
+
+    if (params.force === true || consultasPendentes.length === 0) {
+      setLoadingPendentes(true);
+    }
+
     setError(null);
     try {
       // Incluir medico_id automaticamente se fornecido
@@ -31,28 +59,9 @@ export default function useConsultas(medicoId = null) {
         ? { ...params, medico_id: medicoId }
         : params;
 
-      console.log('🔍 Buscando consultas pendentes com params:', queryParams);
       const data = await consultaService.getConsultasPendentes(queryParams);
-      console.log('✅ Resposta da API de consultas pendentes:', data);
 
-      let consultas = [];
-      
-      // Suporta diferentes formatos de resposta da API
-      if (data.status === "success" && data.data) {
-        // Formato paginado: {status: "success", data: {data: [...], current_page: 1, ...}}
-        consultas = data.data.data || data.data || [];
-        console.log('📋 Consultas extraídas (formato paginado):', consultas);
-      } else if (data.success) {
-        // Formato antigo: {success: true, data: [...]}
-        consultas = data.data || data.consultas || [];
-        console.log('📋 Consultas extraídas (formato success):', consultas);
-      } else if (Array.isArray(data)) {
-        console.log('📋 Consultas extraídas (formato array):', data);
-        consultas = data;
-      } else {
-        console.log('⚠️ Formato de resposta desconhecido:', data);
-        consultas = [];
-      }
+      const consultas = normalizeApiList(data).filter(consulta => !isOutOfConsultationQueue(consulta));
       
       // FILTRAR: Transferências de especialidade só aparecem se pagamento estiver confirmado
       const consultasFiltradas = consultas.filter(consulta => {
@@ -78,18 +87,6 @@ export default function useConsultas(medicoId = null) {
           
           const podeListar = statusConfirmada && pagamentoOk && agendamentoValido;
           
-          if (!podeListar) {
-            console.log(`🚫 Transferência especialidade ${consulta.nid || consulta.paciente?.nid} não listada:`, {
-              status: consulta.status,
-              status_pagamento: consulta.status_pagamento,
-              valido: consulta.valido,
-              tipo: consulta.tipo,
-              tem_historico_transferencia: temTransferenciaNoHistorico
-            });
-          } else {
-            console.log(`✅ Transferência especialidade ${consulta.nid || consulta.paciente?.nid} LIBERADA para atendimento (pagamento confirmado)`);
-          }
-          
           return podeListar;
         }
         
@@ -97,53 +94,30 @@ export default function useConsultas(medicoId = null) {
         return true;
       });
       
-      console.log(`✅ Consultas filtradas: ${consultasFiltradas.length} de ${consultas.length} (${consultas.length - consultasFiltradas.length} transferências sem pagamento excluídas)`);
-      setConsultasPendentes(consultasFiltradas);
+      if (fetchSeq === fetchPendentesSeqRef.current) {
+        setConsultasPendentes(consultasFiltradas);
+        setCachedRequest(`consultas:pendentes:last:${snapshotSuffix}`, consultasFiltradas, { persist: true });
+      }
     } catch (err) {
-      console.error('❌ Erro ao buscar consultas pendentes:', err);
-      setError(err);
-      message.error('Erro ao carregar consultas pendentes');
+      if (fetchSeq === fetchPendentesSeqRef.current) {
+        setError(err);
+        message.error('Erro ao carregar consultas pendentes');
+      }
     } finally {
-      setLoadingPendentes(false);
+      if (fetchSeq === fetchPendentesSeqRef.current) {
+        setLoadingPendentes(false);
+      }
     }
-  }, [medicoId]);
+  }, [medicoId, consultasPendentes.length, snapshotSuffix]);
 
   /**
    * Buscar prescrições do paciente da API
    */
   const fetchPrescricoesPaciente = useCallback(async (pacienteId, nid) => {
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      
-      // Buscar prescrições do paciente da porta 8007
-      const response = await fetch(`http://127.0.0.1:8007/api/prescricoes?paciente_id=${pacienteId}&nid=${nid}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        console.warn('⚠️ Erro ao buscar prescrições do paciente');
-        return [];
-      }
-      
-      const data = await response.json();
-      console.log('✅ Prescrições do paciente:', data);
-      
-      // Extrair prescrições do formato de resposta
-      if (data.status === "success" && data.data) {
-        return data.data.data || data.data || [];
-      } else if (data.success) {
-        return data.data || data.prescricoes || [];
-      } else if (Array.isArray(data)) {
-        return data;
-      }
-      
-      return [];
+      const data = await consultaService.getPrescricoes(null, { paciente_id: pacienteId, nid });
+      return normalizeApiList(data);
     } catch (err) {
-      console.error('❌ Erro ao buscar prescrições:', err);
       return [];
     }
   }, []);
@@ -162,15 +136,9 @@ export default function useConsultas(medicoId = null) {
 
       const data = await consultaService.getConsultasRealizadas(queryParams);
 
-      let consultas = [];
-      if (data.success) {
-        consultas = data.data || data.consultas || [];
-      } else if (Array.isArray(data)) {
-        consultas = data;
-      }
+      let consultas = normalizeApiList(data).map(normalizarPacienteConsulta);
       
       // Buscar prescrições para cada consulta da API http://127.0.0.1:8007/api/prescricoes
-      console.log('🔍 Buscando prescrições para consultas realizadas...');
       const consultasComPrescricoes = await Promise.all(
         consultas.map(async (consulta) => {
           try {
@@ -188,23 +156,20 @@ export default function useConsultas(medicoId = null) {
             }
             return consulta;
           } catch (err) {
-            console.error('Erro ao buscar prescrições para consulta:', err);
             return consulta;
           }
         })
       );
       
-      console.log('✅ Consultas com prescrições carregadas:', consultasComPrescricoes);
       setConsultasRealizadas(consultasComPrescricoes);
+      setCachedRequest(`consultas:realizadas:last:${snapshotSuffix}`, consultasComPrescricoes, { persist: true });
     } catch (err) {
-      console.error('❌ Erro ao buscar consultas realizadas:', err);
       setError(err);
       // message.error('Erro ao carregar histórico de consultas');
-      console.warn('⚠️ Histórico de consultas não disponível');
     } finally {
       setLoadingRealizadas(false);
     }
-  }, [medicoId, fetchPrescricoesPaciente]);
+  }, [medicoId, fetchPrescricoesPaciente, snapshotSuffix]);
 
   /**
    * Buscar pacientes que retornaram com exames
@@ -220,16 +185,8 @@ export default function useConsultas(medicoId = null) {
 
       const data = await consultaService.getPacientesComExames(queryParams);
 
-      if (data.success) {
-        const pacientes = data.data || data.pacientes || [];
-        setPacientesComExames(pacientes);
-      } else if (Array.isArray(data)) {
-        setPacientesComExames(data);
-      } else {
-        setPacientesComExames([]);
-      }
+      setPacientesComExames(normalizeApiList(data));
     } catch (err) {
-      console.error('Erro ao buscar pacientes com exames:', err);
       setError(err);
       message.error('Erro ao carregar pacientes com exames');
     } finally {
@@ -243,14 +200,14 @@ export default function useConsultas(medicoId = null) {
   const criarConsulta = useCallback(async (payload) => {
     try {
       const data = await consultaService.createConsulta(payload);
+      invalidateCachedRequest('consultas:');
       message.success('Consulta criada com sucesso');
       
       // Atualizar lista de consultas pendentes
-      await fetchConsultasPendentes();
+      await fetchConsultasPendentes({ force: true });
       
       return data;
     } catch (err) {
-      console.error('Erro ao criar consulta:', err);
       message.error('Erro ao criar consulta');
       throw err;
     }
@@ -262,20 +219,18 @@ export default function useConsultas(medicoId = null) {
   const finalizarConsulta = useCallback(async (consultaId, payload) => {
     try {
       const data = await consultaService.finalizarConsulta(consultaId, payload);
+      invalidateCachedRequest('consultas:');
+      setConsultasPendentes(prev => prev.filter(consulta => !consultaMatchesId(consulta, consultaId)));
       message.success('Consulta finalizada com sucesso');
       
       // Atualizar listas
       await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas()
+        fetchConsultasPendentes({ force: true }),
+        fetchConsultasRealizadas({ force: true })
       ]);
       
       return data;
     } catch (err) {
-      console.error('Erro ao finalizar consulta:', err);
-      if (err.response?.status === 422) {
-        console.error('❌ Erros de validação (422):', JSON.stringify(err.response?.data?.errors || err.response?.data, null, 2));
-      }
       message.error('Erro ao finalizar consulta');
       throw err;
     }
@@ -287,14 +242,14 @@ export default function useConsultas(medicoId = null) {
   const solicitarExames = useCallback(async (consultaId, payload) => {
     try {
       const data = await consultaService.solicitarExames(consultaId, payload);
+      invalidateCachedRequest('consultas:');
       // Não mostrar mensagem aqui - deixar o componente decidir
       
       // Atualizar consultas pendentes
-      await fetchConsultasPendentes();
+      await fetchConsultasPendentes({ force: true });
       
       return data;
     } catch (err) {
-      console.error('Erro ao solicitar exames:', err);
       message.error('Erro ao solicitar exames');
       throw err;
     }
@@ -306,17 +261,17 @@ export default function useConsultas(medicoId = null) {
   const registrarAlta = useCallback(async (consultaId, payload) => {
     try {
       const data = await consultaService.registrarAlta(consultaId, payload);
+      invalidateCachedRequest('consultas:');
       message.success('Alta registrada com sucesso');
       
       // Atualizar listas
       await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas()
+        fetchConsultasPendentes({ force: true }),
+        fetchConsultasRealizadas({ force: true })
       ]);
       
       return data;
     } catch (err) {
-      console.error('Erro ao registrar alta:', err);
       message.error('Erro ao registrar alta');
       throw err;
     }
@@ -328,17 +283,17 @@ export default function useConsultas(medicoId = null) {
   const registrarObito = useCallback(async (consultaId, payload) => {
     try {
       const data = await consultaService.registrarObito(consultaId, payload);
+      invalidateCachedRequest('consultas:');
       message.success('Óbito registrado');
       
       // Atualizar listas
       await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas()
+        fetchConsultasPendentes({ force: true }),
+        fetchConsultasRealizadas({ force: true })
       ]);
       
       return data;
     } catch (err) {
-      console.error('Erro ao registrar óbito:', err);
       message.error('Erro ao registrar óbito');
       throw err;
     }
@@ -358,26 +313,21 @@ export default function useConsultas(medicoId = null) {
         throw new Error(`ID inválido: ${agendamentoId}. Deve ser um número inteiro positivo.`);
       }
       
-      console.log('🔄 Iniciando transferência de médico:', {
-        agendamentoId: id,
-        payload,
-        url: `/consultas-agendadas/${id}/transferir-medico`
-      });
-      
       const data = await consultaService.transferirMedico(id, payload);
+      invalidateCachedRequest('consultas:');
       
-      console.log('✅ Transferência concluída:', data);
       message.success('Paciente transferido com sucesso');
       
       // Atualizar consultas pendentes
-      await fetchConsultasPendentes();
+      await fetchConsultasPendentes({ force: true });
       
       return data;
     } catch (err) {
-      console.error('❌ Erro ao transferir médico:', err);
-      console.error('Response:', err.response?.data);
-      console.error('Status:', err.response?.status);
-      const errorMsg = err.response?.data?.message || err.message || 'Erro ao transferir paciente';
+      const errors = err.response?.data?.errors;
+      const errorMsg = err.response?.data?.message ||
+        (errors ? Object.values(errors).flat().join('; ') : null) ||
+        err.message ||
+        'Erro ao transferir paciente';
       message.error(errorMsg);
       throw err;
     }
@@ -389,18 +339,22 @@ export default function useConsultas(medicoId = null) {
   const transferirEspecialidade = useCallback(async (consultaId, payload) => {
     try {
       const data = await consultaService.transferirEspecialidade(consultaId, payload);
+      invalidateCachedRequest('consultas:');
+      invalidateCachedRequest('pacientes:transferidos-especialidade');
+      invalidateCachedRequest('clinical-data:');
       message.success('Paciente transferido para nova especialidade');
-      
-      // Atualizar consultas pendentes
-      await fetchConsultasPendentes();
-      
+
+      await Promise.all([
+        fetchConsultasPendentes({ force: true }),
+        fetchConsultasRealizadas({ force: true })
+      ]);
+
       return data;
     } catch (err) {
-      console.error('Erro ao transferir especialidade:', err);
       message.error('Erro ao transferir paciente');
       throw err;
     }
-  }, [fetchConsultasPendentes]);
+  }, [fetchConsultasPendentes, fetchConsultasRealizadas]);
 
   /**
    * Adicionar prescrição
@@ -411,7 +365,6 @@ export default function useConsultas(medicoId = null) {
       message.success('Prescrição adicionada com sucesso');
       return data;
     } catch (err) {
-      console.error('Erro ao adicionar prescrição:', err);
       message.error('Erro ao adicionar prescrição');
       throw err;
     }
@@ -426,7 +379,6 @@ export default function useConsultas(medicoId = null) {
       message.success('Prescrição atualizada com sucesso');
       return data;
     } catch (err) {
-      console.error('Erro ao atualizar prescrição:', err);
       message.error('Erro ao atualizar prescrição');
       throw err;
     }
@@ -441,7 +393,6 @@ export default function useConsultas(medicoId = null) {
       message.success('Prescrição removida com sucesso');
       return data;
     } catch (err) {
-      console.error('Erro ao remover prescrição:', err);
       message.error('Erro ao remover prescrição');
       throw err;
     }
@@ -486,9 +437,7 @@ export default function useConsultas(medicoId = null) {
 
       setExamesPendentes(normalizada);
     } catch (err) {
-      console.error('❌ Erro ao buscar exames pendentes:', err);
       setError(err);
-      console.warn('⚠️ Exames pendentes não disponíveis');
       setExamesPendentes([]);
     } finally {
       setLoadingExames(false);
@@ -629,15 +578,20 @@ export default function useConsultas(medicoId = null) {
   const criarTransferencia = useCallback(async (payload) => {
     try {
       const data = await consultaService.createTransferencia(payload);
+      invalidateCachedRequest('consultas:');
       message.success('Transferência criada com sucesso');
-      await fetchTransferenciasPendentes();
+      await Promise.all([
+        fetchTransferenciasPendentes(),
+        fetchConsultasPendentes({ force: true }),
+        fetchConsultasRealizadas({ force: true }),
+      ]);
       return data;
     } catch (err) {
       console.error('Erro ao criar transferência:', err);
       message.error('Erro ao criar transferência');
       throw err;
     }
-  }, [fetchTransferenciasPendentes]);
+  }, [fetchTransferenciasPendentes, fetchConsultasPendentes, fetchConsultasRealizadas]);
 
   /**
    * Aceitar transferência
@@ -645,11 +599,11 @@ export default function useConsultas(medicoId = null) {
   const aceitarTransferencia = useCallback(async (transferenciaid, payload = {}) => {
     try {
       const data = await consultaService.aceitarTransferencia(transferenciaid, payload);
+      invalidateCachedRequest('consultas:');
       message.success('Transferência aceita');
       await fetchTransferenciasPendentes();
       return data;
     } catch (err) {
-      console.error('Erro ao aceitar transferência:', err);
       message.error('Erro ao aceitar transferência');
       throw err;
     }
@@ -661,39 +615,25 @@ export default function useConsultas(medicoId = null) {
   const recusarTransferencia = useCallback(async (transferenciaid, payload) => {
     try {
       const data = await consultaService.recusarTransferencia(transferenciaid, payload);
+      invalidateCachedRequest('consultas:');
       message.success('Transferência recusada');
       await fetchTransferenciasPendentes();
       return data;
     } catch (err) {
-      console.error('Erro ao recusar transferência:', err);
       message.error('Erro ao recusar transferência');
       throw err;
     }
   }, [fetchTransferenciasPendentes]);
 
-  /**
-   * Processar pagamento de transferência
-   */
-  const processarPagamentoTransferencia = useCallback(async (transferenciaid, payload) => {
-    try {
-      const data = await consultaService.processarPagamentoTransferencia(transferenciaid, payload);
-      message.success('Pagamento processado com sucesso');
-      await fetchTransferenciasPendentes();
-      return data;
-    } catch (err) {
-      console.error('Erro ao processar pagamento:', err);
-      message.error('Erro ao processar pagamento');
-      throw err;
-    }
-  }, [fetchTransferenciasPendentes]);
+
 
   /**
    * Atualizar todas as listas
    */
   const refreshAll = useCallback(async () => {
     await Promise.all([
-      fetchConsultasPendentes(),
-      fetchConsultasRealizadas(),
+      fetchConsultasPendentes({ force: true }),
+      fetchConsultasRealizadas({ force: true }),
       fetchPacientesComExames(),
       fetchExamesPendentes(),
       fetchTransferenciasPendentes()
@@ -702,8 +642,8 @@ export default function useConsultas(medicoId = null) {
 
   // Buscar dados iniciais ao montar o componente
   useEffect(() => {
-    fetchConsultasPendentes();
-    fetchConsultasRealizadas();
+    fetchConsultasPendentes({ force: true });
+    fetchConsultasRealizadas({ force: true });
     fetchPacientesComExames();
     fetchExamesPendentes();
     fetchTransferenciasPendentes();
@@ -763,6 +703,5 @@ export default function useConsultas(medicoId = null) {
     criarTransferencia,
     aceitarTransferencia,
     recusarTransferencia,
-    processarPagamentoTransferencia
   };
 }

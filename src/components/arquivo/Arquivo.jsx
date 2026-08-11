@@ -1,5 +1,4 @@
-import React, { useState, useContext } from 'react';
-import { ClinicContext } from '../../context/ClinicContext';
+import React, { useState } from 'react';
 import { Table, Button, Modal, Timeline, Input, Tabs, Card, Descriptions, Tag, Divider } from 'antd';
 import {  FileSearchOutlined,
   MedicineBoxOutlined,
@@ -10,6 +9,7 @@ import {  FileSearchOutlined,
   StopOutlined,
   SendOutlined
 } from '@ant-design/icons';
+import useClinicalBackendData from '../../hooks/useClinicalBackendData';
 
 const { TabPane } = Tabs;
 
@@ -94,36 +94,13 @@ const Arquivo = () => {
     return String(valor);
   };
 
-  // Função para normalizar exames (garantir que sejam sempre strings ou objetos processados)
-  const normalizarExames = (exames) => {
-    if (!exames) return [];
-    
-    if (!Array.isArray(exames)) {
-      // Se for uma string simples
-      if (typeof exames === 'string') return [exames];
-      // Se for um objeto
-      if (typeof exames === 'object' && exames !== null) {
-        if (exames.nome) return [String(exames.nome)];
-        return [JSON.stringify(exames)];
-      }
-      return [String(exames)];
-    }
-    
-    // Se for array, garantir que cada item seja string
-    return exames.map(exame => {
-      if (typeof exame === 'string') return exame;
-      if (typeof exame === 'object' && exame !== null) {
-        if (exame.nome) return String(exame.nome);
-        return JSON.stringify(exame);
-      }
-      return String(exame);
-    });
-  };
   const {
-    pacientes,
-    triagensRealizadas,
-    consultasRealizadas
-  } = useContext(ClinicContext);
+    pacientes = [],
+    triagensRealizadas = [],
+    consultasRealizadas = [],
+    examesConcluidos = [],
+    loading,
+  } = useClinicalBackendData();
 
   const [historicoVisivel, setHistoricoVisivel] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
@@ -214,28 +191,24 @@ const Arquivo = () => {
     }
   ];
 
-  const pacientesFiltrados = pacientes.filter(p =>
-    p && p.nome ? p.nome.toLowerCase().includes(filtroNome.toLowerCase()) : false
-  );
+  const pacientesFiltrados = pacientes.filter(p => {
+    if (!p) return false;
+    const termo = filtroNome.toLowerCase();
+    const nomeCompleto = [p.nome, p.apelido, p.nid].filter(Boolean).join(' ').toLowerCase();
+    return nomeCompleto.includes(termo);
+  });
   const historicoPaciente = () => {
     if (!pacienteSelecionado) return [];
 
-    const triagensPaciente = triagensRealizadas.filter(
-      t => String(t.id) === String(pacienteSelecionado.id) ||
-        String(t.pacienteId) === String(pacienteSelecionado.id)
+    const matchesPacienteSelecionado = (item = {}) => (
+      String(item.pacienteId || item.paciente_id || '') === String(pacienteSelecionado.id) ||
+      String(item.id || '') === String(pacienteSelecionado.id) ||
+      (item.nid && pacienteSelecionado.nid && String(item.nid) === String(pacienteSelecionado.nid))
     );
 
-    const consultasPaciente = consultasRealizadas.filter(
-      c => String(c.id) === String(pacienteSelecionado.id) ||
-        String(c.pacienteId) === String(pacienteSelecionado.id)
-    );
-
-    // Filtrar exames do paciente
-    const examesPaciente = triagensRealizadas.filter(
-      e => (String(e.id) === String(pacienteSelecionado.id) ||
-        String(e.pacienteId) === String(pacienteSelecionado.id)) &&
-        e.tipoTriagem === 'exames'
-    );
+    const triagensPaciente = triagensRealizadas.filter(matchesPacienteSelecionado);
+    const consultasPaciente = consultasRealizadas.filter(matchesPacienteSelecionado);
+    const examesPaciente = examesConcluidos.filter(matchesPacienteSelecionado);
 
     const eventos = [];
 
@@ -290,8 +263,9 @@ const Arquivo = () => {
         tipo: 'Exames Laboratoriais',
         categoria: 'exame',
         descricao: `
+          Exame: ${e.nome_exame || e.tipo_exame || e.examesSolicitados || '-'}
           Resultados: ${resultados}
-          Observações: ${e.observacoes || 'Nenhuma'}
+          Observações: ${e.observacoes || e.observacoes_resultado || 'Nenhuma'}
         `,
         data: e.dataExames,
         dadosCompletos: e
@@ -596,6 +570,7 @@ const Arquivo = () => {
         <Table
           columns={columnsPacientes}
           dataSource={pacientesFiltrados}
+          loading={loading}
           rowKey="id"
           pagination={{ pageSize: 10 }}
           bordered

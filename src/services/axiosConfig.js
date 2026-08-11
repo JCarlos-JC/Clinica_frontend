@@ -1,22 +1,32 @@
 import axios from 'axios';
+import {
+    acquireApiSlot,
+    enhanceApiError,
+    getAuthToken,
+    handleExpiredSession,
+    isAuthRoute,
+    prepareApiRequestConfig,
+    releaseApiSlot,
+    retryApiRequest,
+    shouldRetryApiRequest,
+} from './apiConfig';
 
 // Get token from localStorage
 const getToken = () => {
-    return localStorage.getItem('token');
+    return getAuthToken();
 };
 
 // Add request interceptor to include token in all requests
 axios.interceptors.request.use(
-    (config) => {
-        // ...existing code...
-        
+    async (config) => {
+        prepareApiRequestConfig(config);
         const token = getToken();
 
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }
 
-        return config;
+        return acquireApiSlot(config);
     },
     (error) => {
         // ...existing code...
@@ -35,19 +45,20 @@ axios.interceptors.response.use(
         // Verificar se algo mudou no localStorage após cada resposta
         // ...existing code...
         
+        releaseApiSlot(response.config);
         return response;
     },
-    (error) => {
-        // ...existing code...
-        
-        // ...existing code...
+    async (error) => {
+        releaseApiSlot(error.config);
 
-        if (error.response?.status === 401) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-            }
+        if (shouldRetryApiRequest(error)) {
+            return retryApiRequest(axios, error);
+        }
+
+        enhanceApiError(error);
+
+        if (error.response?.status === 401 && !error.config?._skipAuthRedirect && !isAuthRoute(error.config?.url)) {
+            handleExpiredSession(error.response?.data?.error || error.response?.data?.message);
         }
 
         return Promise.reject(error);

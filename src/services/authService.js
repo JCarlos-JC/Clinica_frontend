@@ -1,8 +1,97 @@
 import axios from 'axios';
+import { clearAuthStorage } from './apiConfig';
 
-const API_URL = "http://196.3.100.216/api";
+const API_URL = (process.env.REACT_APP_API_URL || 'http://196.3.100.216/api').replace(/\/$/, '');
 
 class AuthService {
+    normalizeRoleName(role) {
+        const raw = typeof role === 'string'
+            ? role
+            : (role?.nome || role?.name || role?.codigo || role?.slug || role?.role || '');
+
+        return String(raw)
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    extractRoleNames(source = {}) {
+        if (Array.isArray(source)) {
+            return this.extractRoleNames({ roles: source });
+        }
+
+        const roleSources = [
+            source.roles,
+            source.role,
+            source.perfis,
+            source.perfil,
+            source.grupos,
+            source.tipo_usuario,
+            source.tipo,
+            source.cargo
+        ];
+
+        const names = roleSources.flatMap((value) => {
+            if (!value) return [];
+            if (Array.isArray(value)) return value;
+            return [value];
+        }).map((role) => {
+            if (typeof role === 'string') return role;
+            return role?.nome || role?.name || role?.codigo || role?.slug || role?.role || '';
+        }).filter(Boolean);
+
+        const seen = new Set();
+        return names.filter((name) => {
+            const normalized = this.normalizeRoleName(name);
+            if (!normalized || seen.has(normalized)) return false;
+            seen.add(normalized);
+            return true;
+        });
+    }
+
+    inferUserType(user = {}, roles = []) {
+        const normalizedRoles = roles.map(role => this.normalizeRoleName(role));
+        const identityHints = [user.tipo_usuario, user.tipo, user.cargo, user.nome, user.name, user.email]
+            .map(value => this.normalizeRoleName(value))
+            .filter(Boolean);
+        const haystack = [...normalizedRoles, ...identityHints];
+
+        if (haystack.some(value => value.includes('administrador') || value === 'admin')) return 'admin';
+        if (haystack.some(value => value.includes('medico'))) return 'medico';
+        if (haystack.some(value => value.includes('enfermeiro'))) return 'enfermeiro';
+        if (haystack.some(value => value.includes('recepcionista') || value.includes('rececionista'))) return 'recepcionista';
+        if (haystack.some(value => value.includes('laboratorista') || value.includes('analista'))) return 'laboratorista';
+        if (haystack.some(value => value.includes('farmaceutico'))) return 'farmaceutico';
+
+        return normalizedRoles[0] || user.tipo_usuario || 'user';
+    }
+
+    normalizeUser(user = {}, explicitRoles = null) {
+        const roles = explicitRoles && explicitRoles.length > 0
+            ? explicitRoles
+            : this.extractRoleNames(user);
+        const tipo_usuario = this.inferUserType(user, roles);
+
+        const normalizedRoles = roles.length > 0
+            ? roles
+            : (tipo_usuario === 'admin' ? ['admin'] : []);
+
+        return {
+            ...user,
+            id: user.id,
+            nome: user.nome || user.name || '',
+            apelido: user.apelido || '',
+            email: user.email || '',
+            tipo_usuario,
+            cargo: user.cargo || '',
+            especialidade: user.especialidade || null,
+            primeiro_acesso: user.primeiro_acesso || false,
+            permissoes: user.permissions || user.permissoes || [],
+            roles: normalizedRoles
+        };
+    }
+
     /**
      * Login user
      */
@@ -35,17 +124,16 @@ class AuthService {
                             'Authorization': `Bearer ${token}`,
                             'Accept': 'application/json',
                             'Content-Type': 'application/json'
-                        }
+                        },
+                        _skipAuthRedirect: true
                     });
 
                     // ...existing code...
 
                     // ✅ ESTRUTURA CORRETA: { user_id, nome, roles: [{id, nome, descricao}] }
-                    if (rolesResponse.data && Array.isArray(rolesResponse.data.roles)) {
-                        // Extrair nomes dos roles (usar 'nome' ao invés de 'name')
-                        userRoles = rolesResponse.data.roles.map(role => role.nome);
-                    } else {
-                        // ...existing code...
+                    userRoles = this.extractRoleNames(rolesResponse.data);
+                    if (userRoles.length === 0) {
+                        userRoles = this.extractRoleNames(user);
                     }
                 } catch (roleError) {
                     // ...existing code...
@@ -53,70 +141,22 @@ class AuthService {
                     // Se der erro, tentar usar roles que vieram no user
                     if (user.roles && Array.isArray(user.roles)) {
                         // ...existing code...
-                        userRoles = user.roles;
+                        userRoles = this.extractRoleNames(user);
                     }
                 }
 
                 // ...existing code...
 
-                // ✅ Determinar tipo_usuario baseado nos roles
-                let tipo_usuario = 'user'; // Padrão
-
-                if (userRoles.length > 0) {
-                    // Normalizar nomes dos roles (case-insensitive)
-                    const rolesNormalizados = userRoles.map(r => r.toLowerCase());
-
-                    // ...existing code...
-
-                    // Prioridade: admin > medico > enfermeiro > recepcionista > laboratorista > farmaceutico
-                    if (rolesNormalizados.includes('administrador') || rolesNormalizados.includes('admin')) {
-                        tipo_usuario = 'admin';
-                        // ...existing code...
-                    } else if (rolesNormalizados.includes('médico') || rolesNormalizados.includes('medico')) {
-                        tipo_usuario = 'medico';
-                        // ...existing code...
-                    } else if (rolesNormalizados.includes('enfermeiro')) {
-                        tipo_usuario = 'enfermeiro';
-                        // ...existing code...
-                    } else if (rolesNormalizados.includes('recepcionista') || rolesNormalizados.includes('rececionista')) {
-                        tipo_usuario = 'recepcionista';
-                        // ...existing code...
-                    } else if (rolesNormalizados.includes('laboratorista') || rolesNormalizados.includes('analista')) {
-                        tipo_usuario = 'laboratorista';
-                        // ...existing code...
-                    } else if (rolesNormalizados.includes('farmacêutico') || rolesNormalizados.includes('farmaceutico')) {
-                        tipo_usuario = 'farmaceutico';
-                        // ...existing code...
-                    } else {
-                        // Usar primeiro role normalizado
-                        tipo_usuario = userRoles[0].toLowerCase().replace('administrador', 'admin');
-                    }
-                } else {
-                    // ...existing code...
-                }
-
-                // Normalizar estrutura do usuário
-                const normalizedUser = {
-                    id: user.id,
-                    nome: user.nome,
-                    apelido: user.apelido || '',
-                    email: user.email,
-                    tipo_usuario: tipo_usuario,
-                    cargo: user.cargo || '',
-                    especialidade: user.especialidade || null,
-                    primeiro_acesso: user.primeiro_acesso || false,
-                    permissoes: user.permissions || [],
-                    roles: userRoles // Manter roles originais
-                };
+                const normalizedUser = this.normalizeUser(user, userRoles);
 
                 // ...existing code...
 
                 localStorage.setItem('token', token);
+                localStorage.setItem('access_token', token);
                 localStorage.setItem('user', JSON.stringify(normalizedUser));
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                window.dispatchEvent(new CustomEvent('auth:login'));
 
-                // Verificar o que foi salvo IMEDIATAMENTE após salvar
-                const savedUser = JSON.parse(localStorage.getItem('user'));
                 // ...existing code...
 
                 return {
@@ -134,8 +174,10 @@ class AuthService {
                 const { token, user } = response.data.data;
 
                 localStorage.setItem('token', token);
+                localStorage.setItem('access_token', token);
                 localStorage.setItem('user', JSON.stringify(user));
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                window.dispatchEvent(new CustomEvent('auth:login'));
 
                 return {
                     success: true,
@@ -166,7 +208,7 @@ class AuthService {
      */
     async logout() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
             if (token) {
                 await axios.post(`${API_URL}/auth/logout`, {}, {
@@ -176,8 +218,7 @@ class AuthService {
         } catch (error) {
             // ...existing code...
         } finally {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            clearAuthStorage();
             delete axios.defaults.headers.common['Authorization'];
         }
 
@@ -189,7 +230,7 @@ class AuthService {
      */
     async getCurrentUser() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
             if (!token) return null;
 
@@ -205,54 +246,23 @@ class AuthService {
             let userRoles = [];
             try {
                 const rolesResponse = await axios.get(`${API_URL}/users/${user.id}/roles`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    _skipAuthRedirect: true
                 });
 
                 // ✅ Estrutura correta: { user_id, nome, roles: [{id, nome, descricao}] }
-                if (rolesResponse.data && Array.isArray(rolesResponse.data.roles)) {
-                    userRoles = rolesResponse.data.roles.map(role => role.nome);
+                userRoles = this.extractRoleNames(rolesResponse.data);
+                if (userRoles.length === 0) {
+                    userRoles = this.extractRoleNames(user);
                 }
             } catch (roleError) {
                 // ...existing code...
                 if (user.roles && Array.isArray(user.roles)) {
-                    userRoles = user.roles;
+                    userRoles = this.extractRoleNames(user);
                 }
             }
 
-            // Determinar tipo_usuario
-            let tipo_usuario = 'user';
-            if (userRoles.length > 0) {
-                const rolesNormalizados = userRoles.map(r => r.toLowerCase());
-
-                if (rolesNormalizados.includes('administrador') || rolesNormalizados.includes('admin')) {
-                    tipo_usuario = 'admin';
-                } else if (rolesNormalizados.includes('médico') || rolesNormalizados.includes('medico')) {
-                    tipo_usuario = 'medico';
-                } else if (rolesNormalizados.includes('enfermeiro')) {
-                    tipo_usuario = 'enfermeiro';
-                } else if (rolesNormalizados.includes('recepcionista') || rolesNormalizados.includes('rececionista')) {
-                    tipo_usuario = 'recepcionista';
-                } else if (rolesNormalizados.includes('laboratorista') || rolesNormalizados.includes('analista')) {
-                    tipo_usuario = 'laboratorista';
-                } else if (rolesNormalizados.includes('farmacêutico') || rolesNormalizados.includes('farmaceutico')) {
-                    tipo_usuario = 'farmaceutico';
-                } else {
-                    tipo_usuario = userRoles[0].toLowerCase().replace('administrador', 'admin');
-                }
-            }
-
-            const normalizedUser = {
-                id: user.id,
-                nome: user.nome,
-                apelido: user.apelido || '',
-                email: user.email,
-                tipo_usuario: tipo_usuario,
-                cargo: user.cargo || '',
-                especialidade: user.especialidade || null,
-                primeiro_acesso: user.primeiro_acesso || false,
-                permissoes: user.permissions || [],
-                roles: userRoles
-            };
+            const normalizedUser = this.normalizeUser(user, userRoles);
 
             localStorage.setItem('user', JSON.stringify(normalizedUser));
             return normalizedUser;
@@ -261,8 +271,7 @@ class AuthService {
             // ...existing code...
 
             if (error.response?.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
+                clearAuthStorage();
             }
 
             return null;
@@ -274,20 +283,16 @@ class AuthService {
      */
     async getUserRoles(userId) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
             if (!token) return [];
 
             const response = await axios.get(`${API_URL}/users/${userId}/roles`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` },
+                _skipAuthRedirect: true
             });
 
-            // ✅ Estrutura correta: { user_id, nome, roles: [{id, nome, descricao}] }
-            if (response.data && Array.isArray(response.data.roles)) {
-                return response.data.roles.map(role => role.nome);
-            }
-
-            return [];
+            return this.extractRoleNames(response.data);
 
         } catch (error) {
             // ...existing code...
@@ -296,11 +301,61 @@ class AuthService {
     }
 
     /**
+     * Update current user profile using the real users endpoint.
+     */
+    async updateCurrentUser(values = {}) {
+        try {
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+            const currentUser = this.getUser();
+
+            if (!token || !currentUser?.id) {
+                return { success: false, message: 'Sessão inválida. Faça login novamente.' };
+            }
+
+            const payload = {
+                nome: values.nome || values.name,
+                apelido: values.apelido,
+                email: values.email,
+                telefone: values.telefone || values.phone,
+                celular: values.celular || values.phone,
+                cargo: values.cargo || values.role,
+                departamento: values.departamento || values.department,
+            };
+
+            Object.keys(payload).forEach((key) => {
+                if (payload[key] === undefined || payload[key] === null || payload[key] === '') {
+                    delete payload[key];
+                }
+            });
+
+            const response = await axios.put(`${API_URL}/users/${currentUser.id}`, payload, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const user = response.data.user || response.data.data || response.data;
+            const normalizedUser = this.normalizeUser({ ...currentUser, ...user });
+            localStorage.setItem('user', JSON.stringify(normalizedUser));
+            window.dispatchEvent(new CustomEvent('auth:user-updated', { detail: normalizedUser }));
+
+            return {
+                success: true,
+                data: normalizedUser,
+                message: response.data.message || 'Perfil atualizado com sucesso'
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Erro ao atualizar perfil'
+            };
+        }
+    }
+
+    /**
      * Change password
      */
     async changePassword(currentPassword, newPassword, newPasswordConfirmation) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
             const response = await axios.post(`${API_URL}/auth/change-password`, {
                 current_password: currentPassword,
@@ -327,7 +382,7 @@ class AuthService {
      * Check if user is authenticated
      */
     isAuthenticated() {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
         return !!token;
     }
 
@@ -335,7 +390,7 @@ class AuthService {
      * Get stored token
      */
     getToken() {
-        return localStorage.getItem('token');
+        return localStorage.getItem('access_token') || localStorage.getItem('token');
     }
 
     /**
@@ -343,7 +398,19 @@ class AuthService {
      */
     getUser() {
         const userStr = localStorage.getItem('user');
-        return userStr ? JSON.parse(userStr) : null;
+        if (!userStr) return null;
+
+        try {
+            const user = JSON.parse(userStr);
+            const normalizedUser = this.normalizeUser(user);
+            if (JSON.stringify(user) !== JSON.stringify(normalizedUser)) {
+                localStorage.setItem('user', JSON.stringify(normalizedUser));
+            }
+            return normalizedUser;
+        } catch (error) {
+            clearAuthStorage();
+            return null;
+        }
     }
 
     /**
@@ -373,8 +440,8 @@ class AuthService {
         const user = this.getUser();
         const isAdminByTipo = user?.tipo_usuario === 'admin';
         const isAdminByRole = user?.roles?.some(r =>
-            r.toLowerCase() === 'admin' ||
-            r.toLowerCase() === 'administrador'
+            this.normalizeRoleName(r) === 'admin' ||
+            this.normalizeRoleName(r) === 'administrador'
         );
         return isAdminByTipo || isAdminByRole;
     }
@@ -385,8 +452,8 @@ class AuthService {
     isMedico() {
         const user = this.getUser();
         return user?.tipo_usuario === 'medico' || user?.roles?.some(r =>
-            r.toLowerCase() === 'medico' ||
-            r.toLowerCase() === 'médico'
+            this.normalizeRoleName(r) === 'medico' ||
+            this.normalizeRoleName(r) === 'médico'
         );
     }
 
@@ -396,7 +463,7 @@ class AuthService {
     isEnfermeiro() {
         const user = this.getUser();
         return user?.tipo_usuario === 'enfermeiro' || user?.roles?.some(r =>
-            r.toLowerCase() === 'enfermeiro'
+            this.normalizeRoleName(r) === 'enfermeiro'
         );
     }
 
@@ -406,8 +473,8 @@ class AuthService {
     isRecepcionista() {
         const user = this.getUser();
         return user?.tipo_usuario === 'recepcionista' || user?.roles?.some(r =>
-            r.toLowerCase() === 'recepcionista' ||
-            r.toLowerCase() === 'rececionista'
+            this.normalizeRoleName(r) === 'recepcionista' ||
+            this.normalizeRoleName(r) === 'rececionista'
         );
     }
 
@@ -417,8 +484,8 @@ class AuthService {
     isLaboratorista() {
         const user = this.getUser();
         return user?.tipo_usuario === 'laboratorista' || user?.roles?.some(r =>
-            r.toLowerCase() === 'laboratorista' ||
-            r.toLowerCase() === 'analista'
+            this.normalizeRoleName(r) === 'laboratorista' ||
+            this.normalizeRoleName(r) === 'analista'
         );
     }
 
@@ -428,8 +495,8 @@ class AuthService {
     isFarmaceutico() {
         const user = this.getUser();
         return user?.tipo_usuario === 'farmaceutico' || user?.roles?.some(r =>
-            r.toLowerCase() === 'farmaceutico' ||
-            r.toLowerCase() === 'farmacêutico'
+            this.normalizeRoleName(r) === 'farmaceutico' ||
+            this.normalizeRoleName(r) === 'farmacêutico'
         );
     }
 }

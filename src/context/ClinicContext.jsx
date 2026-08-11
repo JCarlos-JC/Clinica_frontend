@@ -1,4 +1,4 @@
-import React, { createContext, useState, useMemo } from 'react';
+import React, { createContext, useEffect, useState, useMemo } from 'react';
 
 export const ClinicContext = createContext();
 
@@ -29,325 +29,69 @@ export const ClinicProvider = ({ children }) => {
       });
     };
 
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [user, setUser] = useState({
+    const getStoredUser = () => {
+        try {
+            const storedUser = localStorage.getItem('user');
+            return storedUser ? JSON.parse(storedUser) : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const storedUser = getStoredUser();
+    const [isAuthenticated, setIsAuthenticated] = useState(Boolean(localStorage.getItem('access_token') || localStorage.getItem('token')) && Boolean(storedUser));
+    const [user, setUser] = useState(storedUser || {
         name: '',
         email: '',
         role: '',
         department: ''
     });
 
-    // Dados de teste para pacientes com datas de cadastro para hoje, ontem e dias anteriores
-    const hoje = new Date();
-    const ontem = new Date();
-    ontem.setDate(hoje.getDate() - 1);
-    const doisDiasAtras = new Date();
-    doisDiasAtras.setDate(hoje.getDate() - 2);
 
-    // Dados de teste para utentes autônomos
-    const utentesAutonomosTeste = [
-        {
-            id: "1001",
-            nome: "Ana Maria",
-            apelido: "Sousa",
-            hospitalProveniencia: "Hospital Central de Maputo",
-            dataNascimento: new Date(1992, 5, 20),
-            genero: "feminino",
-            tipoDocumento: "bi",
-            bilheteIdentidade: "12345678A",
-            celular: "842345678",
-            celularalternativo: "",
-            tipoExame: "hemograma",
-            dataCadastro: hoje
-        },
-        {
-            id: "1002",
-            nome: "Manuel",
-            apelido: "Tembe",
-            hospitalProveniencia: "Clínica Privada",
-            dataNascimento: new Date(1985, 10, 15),
-            genero: "masculino",
-            tipoDocumento: "passaporte",
-            bilheteIdentidade: "MP567890",
-            celular: "821234567",
-            celularalternativo: "847654321",
-            tipoExame: "glicemia",
-            dataCadastro: ontem
-        }
-    ];
-
-    const dadosDeTeste = [
-        {
-            id: 1,
-            nid: '0001/2023',
-            nome: 'João Silva',
-            apelido: 'Silva',
-            dataNascimento: new Date(1990, 5, 15),
-            genero: 'Masculino',
-            tipoUtente: 'estudanteBolseiro',
-            celular: '82 123 4567',
-            dataCadastro: hoje
-        },
-        {
-            id: 2,
-            nid: '0002/2023',
-            nome: 'Maria Pereira',
-            apelido: 'Pereira',
-            dataNascimento: new Date(1985, 2, 10),
-            genero: 'Feminino',
-            tipoUtente: 'docente',
-            celular: '84 234 5678',
-            dataCadastro: hoje
-        },
-        {
-            id: 3,
-            nid: '0003/2023',
-            nome: 'Carlos Oliveira',
-            apelido: 'Oliveira',
-            dataNascimento: new Date(2000, 11, 21),
-            genero: 'Masculino',
-            tipoUtente: 'estudanteNaoBolseiro',
-            celular: '83 345 6789',
-            dataCadastro: ontem
-        },
-        {
-            id: 4,
-            nid: '0004/2023',
-            nome: 'Ana Santos',
-            apelido: 'Santos',
-            dataNascimento: new Date(1995, 7, 3),
-            genero: 'Feminino',
-            tipoUtente: 'funcionario',
-            celular: '82 456 7890',
-            dataCadastro: ontem
-        },
-        {
-            id: 5,
-            nid: '0005/2023',
-            nome: 'Pedro Machado',
-            apelido: 'Machado',
-            dataNascimento: new Date(1988, 4, 18),
-            genero: 'Masculino',
-            tipoUtente: 'comunidade',
-            celular: '84 567 8901',
-            dataCadastro: doisDiasAtras
-        }
-    ];
-
-    // Dados de teste para triagens pendentes - removidos para evitar conflitos
-    const triagensPendentesTeste = [];    // Dados de teste para triagens realizadas
-    const triagensRealizadasTeste = [
-        {
-            id: 201,
-            pacienteId: 2,
-            dataTriagem: hoje,
-            tipoTriagem: 'vital',
-            peso: 65,
-            altura: 1.68,
-            pressaoArterial: '120/80',
-            frequenciaCardiaca: 72,
-            temperatura: 37.2,
-            oximetria: 98,
-            glicoseCapilar: 95,
-            observacoes: 'Paciente sem queixas específicas',
-            nome: 'Maria Pereira',
-            nid: '0002/2023',
-            apelido: 'Pereira',
-            genero: 'Feminino',
-            dataNascimento: new Date(1985, 2, 10),
-            tipoUtente: 'docente',
-            celular: '84 234 5678'
-        },
-        {
-            id: 202,
-            pacienteId: 4,
-            dataTriagem: ontem,
-            tipoTriagem: 'vital',
-            peso: 58,
-            altura: 1.62,
-            pressaoArterial: '130/85',
-            frequenciaCardiaca: 78,
-            temperatura: 36.8,
-            oximetria: 97,
-            glicoseCapilar: 102,
-            observacoes: 'Leve dor de cabeça',
-            nome: 'Ana Santos',
-            nid: '0004/2023',
-            apelido: 'Santos',
-            genero: 'Feminino',
-            dataNascimento: new Date(1995, 7, 3),
-            tipoUtente: 'funcionario',
-            celular: '82 456 7890'
-        },
-        {
-            id: 205,
-            pacienteId: 1,
-            dataTriagem: hoje,
-            tipoTriagem: 'vital',
-            peso: 78,
-            altura: 1.75,
-            pressaoArterial: '135/85',
-            frequenciaCardiaca: 75,
-            temperatura: 36.9,
-            oximetria: 99,
-            glicoseCapilar: 88,
-            observacoes: 'Paciente relata dores musculares',
-            nome: 'João Silva',
-            nid: '0001/2023',
-            apelido: 'Silva',
-            genero: 'Masculino',
-            dataNascimento: new Date(1990, 5, 15),
-            tipoUtente: 'estudanteBolseiro',
-            celular: '82 123 4567'
-        },
-        {
-            id: 203,
-            pacienteId: 1,
-            dataTriagem: doisDiasAtras,
-            tipoTriagem: 'exames',
-            dataExames: doisDiasAtras,
-            resultadosExames: {
-                'Hemograma': 'Normal',
-                'Glicemia em jejum': '110 mg/dL (Limítrofe)',
-                'Colesterol Total': '205 mg/dL (Levemente elevado)'
-            },
-            observacoes: 'Recomenda-se dieta equilibrada',
-            jaConsultado: true,
-            nome: 'João Silva',
-            nid: '0001/2023',
-            apelido: 'Silva',
-            genero: 'Masculino',
-            dataNascimento: new Date(1990, 5, 15),
-            tipoUtente: 'estudanteBolseiro',
-            celular: '82 123 4567'
-        },
-        {
-            id: 204,
-            pacienteId: 3,
-            dataTriagem: doisDiasAtras,
-            tipoTriagem: 'exames',
-            dataExames: doisDiasAtras,
-            resultadosExames: {
-                'Raio-X Tórax': 'Sem alterações',
-                'Eletrocardiograma': 'Ritmo sinusal normal'
-            },
-            observacoes: 'Resultados dentro da normalidade',
-            jaConsultado: true,
-            nome: 'Carlos Oliveira',
-            nid: '0003/2023',
-            apelido: 'Oliveira',
-            genero: 'Masculino',
-            dataNascimento: new Date(2000, 11, 21),
-            tipoUtente: 'estudanteNaoBolseiro',
-            celular: '83 345 6789'
-        }
-    ];// Dados de teste para consultas pendentes e realizadas
-    const consultasPendentesTeste = [
-        {
-            id: 301,
-            pacienteId: 2,
-            dataConsulta: hoje,
-            medicoId: 1,
-            medicoNome: 'Dr. Ana Cardoso',
-            especialidade: 'Clínico Geral',
-            nome: 'Maria Pereira',
-            nid: '0002/2023'
-        },
-        {
-            id: 302,
-            pacienteId: 4,
-            dataConsulta: hoje,
-            medicoId: 3,
-            medicoNome: 'Dra. Maria Santos',
-            especialidade: 'Ginecologia',
-            nome: 'Ana Santos',
-            nid: '0004/2023'
-        }
-    ];
-
-    // Dados de teste para exames pendentes
-    const examesPendentesTeste = [
-        {
-            id: 501,
-            pacienteId: 1,
-            examesSolicitados: 'Hemograma, Glicemia',
-            dataSolicitacao: hoje,
-            nome: 'João Silva',
-            nid: '0001/2023',
-            apelido: 'Silva',
-            dataNascimento: new Date(1990, 5, 15),
-        },
-        {
-            id: 502,
-            pacienteId: 3,
-            examesSolicitados: 'Raio-X Tórax, Eletrocardiograma',
-            dataSolicitacao: ontem,
-            nome: 'Carlos Oliveira',
-            nid: '0003/2023',
-            apelido: 'Oliveira',
-            dataNascimento: new Date(2000, 11, 21),
-        }
-    ];    // Dados de teste para exames concluídos
-    const examesConcluidosTeste = [
-        {
-            id: 601,
-            pacienteId: 2,
-            resultadosExames: {
-                'Hemograma': 'Normal',
-                'Glicemia': '85 mg/dL (Normal)',
-                'Colesterol Total': '198 mg/dL (Normal)',
-                'HDL': '45 mg/dL (Normal)',
-                'LDL': '115 mg/dL (Normal)'
-            },
-            dataExames: ontem,
-            tipoTriagem: 'exames',
-            observacoes: 'Todos os resultados dentro da normalidade',
-            nome: 'Maria Pereira',
-            nid: '0002/2023',
-            apelido: 'Pereira',
-            genero: 'Feminino',
-            dataNascimento: new Date(1985, 2, 10),
-            tipoUtente: 'docente',
-            celular: '84 234 5678'
-        },
-        {
-            id: 602,
-            pacienteId: 4,
-            resultadosExames: {
-                'Ultrassonografia Abdominal': 'Sem alterações significativas',
-                'Colesterol Total': '190 mg/dL (Normal)',
-                'Raio-X Tórax': 'Sem alterações',
-                'Mamografia': 'Sem indícios de nódulos ou alterações'
-            },
-            dataExames: doisDiasAtras,
-            tipoTriagem: 'exames',
-            observacoes: 'Recomenda-se manter acompanhamento de rotina',
-            nome: 'Ana Santos',
-            nid: '0004/2023',
-            apelido: 'Santos',
-            genero: 'Feminino',
-            dataNascimento: new Date(1995, 7, 3),
-            tipoUtente: 'funcionario',
-            celular: '82 456 7890'
-        }
-    ];
-
-    // Dados de teste para consultas realizadas - removidos para evitar conflitos de ciclo
-    const consultasRealizadasTeste = [];
-
-    const [pacientes, setPacientes] = useState(dadosDeTeste);
-    const [triagensPendentes, setTriagensPendentes] = useState(triagensPendentesTeste);
-    const [triagensRealizadas, setTriagensRealizadas] = useState(triagensRealizadasTeste);
-    const [consultasPendentes, setConsultasPendentes] = useState(consultasPendentesTeste);
-    const [consultasRealizadas, setConsultasRealizadas] = useState(consultasRealizadasTeste);
-    const [examesPendentes, setExamesPendentes] = useState(examesPendentesTeste);
-    const [examesConcluidos, setExamesConcluidos] = useState(examesConcluidosTeste);
+    const [pacientes, setPacientes] = useState([]);
+    const [triagensPendentes, setTriagensPendentes] = useState([]);
+    const [triagensRealizadas, setTriagensRealizadas] = useState([]);
+    const [consultasPendentes, setConsultasPendentes] = useState([]);
+    const [consultasRealizadas, setConsultasRealizadas] = useState([]);
+    const [examesPendentes, setExamesPendentes] = useState([]);
+    const [examesConcluidos, setExamesConcluidos] = useState([]);
     // Novo estado para pacientes transferidos para especialidades
     const [pacientesTransferidosEspecialidade, setPacientesTransferidosEspecialidade] = useState([]);
     // Estado para prescrições médicas
     const [prescricoes, setPrescricoes] = useState([]);
     // Estado para Utentes Autônomos
-    const [utentesAutonomos, setUtentesAutonomos] = useState(utentesAutonomosTeste);
+    const [utentesAutonomos, setUtentesAutonomos] = useState([]);
+
+    useEffect(() => {
+        const syncAuthFromStorage = () => {
+            const nextUser = getStoredUser();
+            const hasToken = Boolean(localStorage.getItem('access_token') || localStorage.getItem('token'));
+            setIsAuthenticated(hasToken && Boolean(nextUser));
+            if (nextUser) {
+                setUser(nextUser);
+            }
+        };
+
+        const handleAuthExpired = () => {
+            setIsAuthenticated(false);
+            setUser({
+                name: '',
+                email: '',
+                role: '',
+                department: ''
+            });
+        };
+
+        window.addEventListener('storage', syncAuthFromStorage);
+        window.addEventListener('auth:login', syncAuthFromStorage);
+        window.addEventListener('auth:expired', handleAuthExpired);
+
+        return () => {
+            window.removeEventListener('storage', syncAuthFromStorage);
+            window.removeEventListener('auth:login', syncAuthFromStorage);
+            window.removeEventListener('auth:expired', handleAuthExpired);
+        };
+    }, []);
 
     // Funções de login/logout
     const login = (username, password) => {
@@ -403,6 +147,10 @@ export const ClinicProvider = ({ children }) => {
             throw error;
         }
     }; const logout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
         setIsAuthenticated(false);
         setUser({
             name: '',

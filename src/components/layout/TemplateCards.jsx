@@ -1,5 +1,5 @@
-import React, { useContext, useState, useEffect, useMemo } from 'react';
-import { Card, Row, Col, Layout, Badge, Typography, Divider, Alert } from 'antd';
+import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
+import { Card, Row, Col, Layout, Badge, Alert, Divider, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import {
   UserAddOutlined,
@@ -9,13 +9,18 @@ import {
   UserOutlined,
   ExperimentOutlined,
 } from '@ant-design/icons';
-import { Pie, Column } from '@ant-design/plots';
 import NavbarTemplate from './NavbarTemplate';
-import { ClinicContext } from '../../context/ClinicContext';
 import authService from '../../services/authService';
+import useClinicalBackendData from '../../hooks/useClinicalBackendData';
+import patientService from '../../services/patientService';
+import { normalizeApiList } from '../../services/apiConfig';
+import { peekCachedRequest, setCachedRequest } from '../../services/requestCache';
 
 const { Content } = Layout;
 const { Title } = Typography;
+
+const Pie = lazy(() => import('@ant-design/plots').then(module => ({ default: module.Pie })));
+const Column = lazy(() => import('@ant-design/plots').then(module => ({ default: module.Column })));
 
 // Define a CSS style for fade-in and fade-out animations and card hover effects
 const fadeInOutStyle = `
@@ -65,19 +70,47 @@ const TemplateCards = () => {
   const currentUser = authService.getUser();
 
   const {
-    user,
     pacientes = [],
     triagensRealizadas = [],
     consultasRealizadas = [],
     triagensPendentes = [],
     consultasPendentes = [],
     examesPendentes = [],
-    examesConcluidos = []
-  } = useContext(ClinicContext);
+    examesConcluidos = [],
+    totals = {},
+  } = useClinicalBackendData({ perPage: 1 });
+
+  const [pacientesGrafico, setPacientesGrafico] = useState(() => peekCachedRequest('home:pacientes-grafico', null, { persist: true, allowStale: true }) || []);
 
   // State para controlar a visibilidade da mensagem de boas-vindas
   const [showWelcomeMessage, setShowWelcomeMessage] = useState(true);
   const [fadeOutClass, setFadeOutClass] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await patientService.getAllPatients({ page: 1, per_page: 1000 });
+        const list = normalizeApiList(response?.success ? response.data : response).map((paciente) => ({
+          ...paciente,
+          dataCadastro: paciente.dataCadastro || paciente.data_cadastro || paciente.created_at,
+        }));
+
+        setCachedRequest('home:pacientes-grafico', list, { persist: true });
+        if (mounted) {
+          setPacientesGrafico(list);
+        }
+      } catch (error) {
+        if (mounted) setPacientesGrafico([]);
+      }
+    }, 250);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
 
   // useEffect para esconder a mensagem após 3 segundos
   useEffect(() => {
@@ -100,14 +133,14 @@ const TemplateCards = () => {
   // Usar useMemo para calcular estatísticas apenas quando os dados mudarem
   const statistics = useMemo(() => {
     return {
-      totalPacientes: pacientes?.length || 0,
-      totalTriagens: triagensRealizadas?.length || 0,
-      totalConsultas: consultasRealizadas?.length || 0,
-      totalTriagensPendentes: triagensPendentes?.length || 0,
-      totalConsultasPendentes: consultasPendentes?.length || 0,
-      totalExamesPendentes: examesPendentes?.length || 0,
-      totalExamesConcluidos: examesConcluidos?.length || 0,
-      consultasFinalizadas: consultasRealizadas?.filter(c => c.status === 'alta')?.length || 0,
+      totalPacientes: totals.pacientes ?? pacientes?.length ?? 0,
+      totalTriagens: totals.triagensRealizadas ?? triagensRealizadas?.length ?? 0,
+      totalConsultas: totals.consultasRealizadas ?? consultasRealizadas?.length ?? 0,
+      totalTriagensPendentes: totals.triagensPendentes ?? triagensPendentes?.length ?? 0,
+      totalConsultasPendentes: totals.consultasPendentes ?? consultasPendentes?.length ?? 0,
+      totalExamesPendentes: totals.examesPendentes ?? examesPendentes?.length ?? 0,
+      totalExamesConcluidos: totals.examesConcluidos ?? examesConcluidos?.length ?? 0,
+      consultasFinalizadas: consultasRealizadas?.filter(c => ['finalizada', 'finalizada_com_exames', 'alta', 'transferido_hospital'].includes(c.status))?.length || 0,
       consultasObitos: consultasRealizadas?.filter(c => c.status === 'obito')?.length || 0,
     };
   }, [
@@ -117,15 +150,13 @@ const TemplateCards = () => {
     triagensPendentes,
     consultasPendentes,
     examesPendentes,
-    examesConcluidos
+    examesConcluidos,
+    totals
   ]);
 
-  const consultasTransferidas = consultasRealizadas?.filter(c => c.status === 'transferido')?.length || 0;
+  const consultasTransferidas = consultasRealizadas?.filter(c => ['transferido', 'transferido_medico', 'transferido_especialidade', 'transferido_hospital'].includes(c.status))?.length || 0;
 
   const hoje = new Date();
-  const ontem = new Date(hoje);
-  ontem.setDate(hoje.getDate() - 1);
-
   const formatarData = (data) => {
     if (!data) return null;
     return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
@@ -139,11 +170,7 @@ const TemplateCards = () => {
     return dataCadastro === dataHoje;
   })?.length || 0;
 
-  const pacientesEmProcesso = pacientes?.filter(p => {
-    const temTriagem = triagensRealizadas?.some(t => t.pacienteId === p.id);
-    const naoTemAlta = !consultasRealizadas?.some(c => c.pacienteId === p.id && c.status === 'alta');
-    return temTriagem && naoTemAlta;
-  })?.length || 0;
+  const pacientesEmProcesso = (statistics.totalTriagensPendentes || 0) + (statistics.totalConsultasPendentes || 0) + (statistics.totalExamesPendentes || 0);
 
   const pieData = [
     { type: 'Triagens', value: statistics.totalTriagens || 0 },
@@ -162,7 +189,7 @@ const TemplateCards = () => {
     label: {
       formatter: (datum) => {
         if (!datum || typeof datum !== 'object') return '';
-        return `${datum.type}: ${(datum.percent * 100).toFixed(0)}%`;
+        return `${datum.type}: ${((datum.percent || 0) * 100).toFixed(0)}%`;
       },
       style: {
         fontSize: 12,
@@ -183,12 +210,10 @@ const TemplateCards = () => {
     tooltip: {
       showTitle: false,
       showMarkers: false,
-      formatter: (datum) => {
-        return {
-          name: datum.type,
-          value: datum.value
-        };
-      }
+      formatter: (datum) => ({
+        name: datum.type,
+        value: datum.value
+      })
     },
     interactions: [{ type: 'element-active' }],
     statistic: {
@@ -212,13 +237,19 @@ const TemplateCards = () => {
     }
   };
 
-  const columnData = [
-    { month: 'Janeiro', pacientes: 10 },
-    { month: 'Fevereiro', pacientes: 20 },
-    { month: 'Março', pacientes: 30 },
-    { month: 'Abril', pacientes: 40 },
-    { month: 'Maio', pacientes: statistics.totalPacientes },
-  ];
+  const columnData = useMemo(() => {
+    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const contagem = Array.from({ length: 12 }, (_, index) => ({ month: meses[index], pacientes: 0 }));
+
+    pacientesGrafico.forEach((paciente) => {
+      const data = paciente.dataCadastro ? new Date(paciente.dataCadastro) : null;
+      if (data && !Number.isNaN(data.getTime())) {
+        contagem[data.getMonth()].pacientes += 1;
+      }
+    });
+
+    return contagem;
+  }, [pacientesGrafico]);
 
   const columnConfig = {
     data: columnData,
@@ -259,34 +290,34 @@ const TemplateCards = () => {
       {
         key: 'atendimento',
         title: 'Aceitação',
-        icon: <UserAddOutlined style={{ fontSize: '24px', color: '#28a745' }} />,
+        icon: <UserAddOutlined style={{ fontSize: '24px', color: '#52c41a' }} />,
         route: '/atendimento',
         role: 'aceitacao',
         counts: [
           { title: 'Utentes', value: pacientesHoje, color: '#52c41a' },
-          { title: 'Em Processo', value: pacientesEmProcesso, color: '#fa8c16' },
+          { title: 'Em Processo', value: pacientesEmProcesso, color: '#faad14' },
           { title: 'Transferências', value: consultasTransferidas, color: '#722ed1' }
         ]
       },
       {
         key: 'enfermaria',
         title: 'Triagem',
-        icon: <MedicineBoxOutlined style={{ fontSize: '24px', color: '#28a745' }} />,
+        icon: <MedicineBoxOutlined style={{ fontSize: '24px', color: '#52c41a' }} />,
         route: '/enfermaria',
         role: 'enfermeiro',
         counts: [
-          { title: 'Em Espera', value: statistics.totalTriagensPendentes, color: '#fa8c16' },
+          { title: 'Em Espera', value: statistics.totalTriagensPendentes, color: '#faad14' },
           { title: 'Realizadas', value: statistics.totalTriagens, color: '#52c41a' }
         ]
       },
       {
         key: 'consultorio',
         title: 'Consultório',
-        icon: <MedicineBoxOutlined style={{ fontSize: '24px', color: '#28a745' }} />,
+        icon: <MedicineBoxOutlined style={{ fontSize: '24px', color: '#52c41a' }} />,
         route: '/consultorio',
         role: 'medico',
         counts: [
-          { title: 'Em Espera', value: statistics.totalConsultasPendentes, color: '#fa8c16' },
+          { title: 'Em Espera', value: statistics.totalConsultasPendentes, color: '#faad14' },
           { title: 'Finalizadas', value: statistics.consultasFinalizadas, color: '#52c41a' },
           { title: 'Óbitos', value: statistics.consultasObitos, color: '#f5222d' }
         ]
@@ -294,18 +325,18 @@ const TemplateCards = () => {
       {
         key: 'laboratorio',
         title: 'Laboratório',
-        icon: <ExperimentOutlined style={{ fontSize: '24px', color: '#28a745' }} />,
+        icon: <ExperimentOutlined style={{ fontSize: '24px', color: '#52c41a' }} />,
         route: '/laboratorio',
         role: 'analista',
         counts: [
-          { title: 'Pendentes', value: statistics.totalExamesPendentes, color: '#fa8c16' },
+          { title: 'Pendentes', value: statistics.totalExamesPendentes, color: '#faad14' },
           { title: 'Concluídos', value: statistics.totalExamesConcluidos, color: '#52c41a' }
         ]
       },
       {
         key: 'parametrizacao',
         title: 'Parametrização',
-        icon: <FileTextOutlined style={{ fontSize: '24px', color: '#28a745' }} />,
+        icon: <FileTextOutlined style={{ fontSize: '24px', color: '#52c41a' }} />,
         route: '/parametrizacao',
         role: 'admin',
         counts: []
@@ -316,13 +347,8 @@ const TemplateCards = () => {
       return [];
     }
 
-    // Verificar se é admin
-    const isAdmin = currentUser.tipo_usuario === 'admin' ||
-      currentUser.roles?.includes('admin');
-
-
     // Admin vê todos os cards
-    if (isAdmin) {
+    if (authService.isAdmin()) {
       return allCards;
     }
 
@@ -352,7 +378,7 @@ const TemplateCards = () => {
   ]); // ✅ Dependências corretas
 
   // ✅ Usar currentUser para exibir nome
-  const displayUser = currentUser || user;
+  const displayUser = currentUser;
 
 
   return (
@@ -375,7 +401,7 @@ const TemplateCards = () => {
                 message={
                   <h2 style={{
                     margin: 0,
-                    color: '#28a745',
+                    color: '#52c41a',
                     fontSize: '18px'
                   }}>
                     <UserOutlined style={{ marginRight: '8px' }} />
@@ -476,7 +502,7 @@ const TemplateCards = () => {
                           </div>
                           <h3 style={{
                             margin: '0 0 14px 0',
-                            color: '#28a745',
+                            color: '#52c41a',
                             fontSize: '18px',
                             fontWeight: 'bold',
                             transition: 'color 0.3s ease'
@@ -547,12 +573,11 @@ const TemplateCards = () => {
               )}
             </Row>
 
-            {/* Gráficos - só mostrar se tiver dados */}
-            {(hasPieData || statistics.totalPacientes > 0) && (
+            {(hasPieData || columnData.length > 0) && (
               <>
                 <Divider style={{ margin: '28px 0 22px' }}>
                   <Title level={4} style={{
-                    color: '#28a745',
+                    color: '#52c41a',
                     margin: 0,
                     display: 'flex',
                     alignItems: 'center',
@@ -564,68 +589,68 @@ const TemplateCards = () => {
                   </Title>
                 </Divider>
 
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} md={12}>
-                    <Card
-                      hoverable
-                      size="small"
-                      style={{
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        background: 'white',
-                        border: '1px solid #e0e0e0',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                        height: '100%'
-                      }}
-                      bodyStyle={{ padding: '16px' }}
-                    >
-                      <Title level={5} style={{ margin: '0 0 12px 0', color: '#28a745', fontSize: '16px' }}>
-                        Distribuição de Triagens e Consultas
-                      </Title>
-                      <div style={{ height: '175px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {hasPieData ? (
-                          <Pie {...pieConfig} />
-                        ) : (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '200px',
-                            color: '#999',
-                            fontStyle: 'italic'
-                          }}>
-                            Não há dados suficientes para exibir o gráfico
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  </Col>
+                <Suspense fallback={
+                  <Card size="small" style={{ borderRadius: 8, textAlign: 'center', color: '#777' }}>
+                    Carregando gráficos...
+                  </Card>
+                }>
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Card
+                        hoverable
+                        size="small"
+                        style={{
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          background: 'white',
+                          border: '1px solid #e0e0e0',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                          height: '100%'
+                        }}
+                        bodyStyle={{ padding: '16px' }}
+                      >
+                        <Title level={5} style={{ margin: '0 0 12px 0', color: '#52c41a', fontSize: '16px' }}>
+                          Distribuição de Triagens e Consultas
+                        </Title>
+                        <div style={{ height: '175px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {hasPieData ? (
+                            <Pie {...pieConfig} />
+                          ) : (
+                            <div style={{ color: '#999', fontStyle: 'italic' }}>
+                              Não há dados suficientes para exibir o gráfico
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    </Col>
 
-                  <Col xs={24} md={12}>
-                    <Card
-                      hoverable
-                      size="small"
-                      style={{
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        background: 'white',
-                        border: '1px solid #e0e0e0',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                        height: '100%'
-                      }}
-                      bodyStyle={{ padding: '16px' }}
-                    >
-                      <Title level={5} style={{ margin: '0 0 12px 0', color: '#28a745', fontSize: '16px' }}>
-                        Crescimento de Utentes
-                      </Title>
-                      <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Column {...columnConfig} />
-                      </div>
-                    </Card>
-                  </Col>
-                </Row>
+                    <Col xs={24} md={12}>
+                      <Card
+                        hoverable
+                        size="small"
+                        style={{
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          background: 'white',
+                          border: '1px solid #e0e0e0',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                          height: '100%'
+                        }}
+                        bodyStyle={{ padding: '16px' }}
+                      >
+                        <Title level={5} style={{ margin: '0 0 12px 0', color: '#52c41a', fontSize: '16px' }}>
+                          Crescimento de Utentes
+                        </Title>
+                        <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Column {...columnConfig} />
+                        </div>
+                      </Card>
+                    </Col>
+                  </Row>
+                </Suspense>
               </>
             )}
+
           </div>
         </div>
       </Content>

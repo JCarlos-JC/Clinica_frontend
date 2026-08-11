@@ -1,19 +1,19 @@
-import React, { useContext } from 'react';
+import React, { useMemo } from 'react';
 import { Layout, Typography, Avatar, Dropdown, Menu } from 'antd';
 import { DownOutlined, UserOutlined} from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { ClinicContext } from '../../context/ClinicContext';
+import authService from '../../services/authService';
 
 const { Header } = Layout;
 const { Title } = Typography;
 
 const NavbarTemplate = () => {
-  const { logout, user } = useContext(ClinicContext);
   const navigate = useNavigate();
+  const user = useMemo(() => authService.getUser(), []);
 
   const handleMenuClick = ({ key }) => {
     if (key === 'logout') {
-      logout();
+      authService.logout();
       // Forçando o redirecionamento para a página inicial
       setTimeout(() => {
         navigate('/');
@@ -79,7 +79,7 @@ const NavbarTemplate = () => {
       <Dropdown overlay={menu}>
         <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
-          <span>{user?.name || 'Usuário'}</span>
+          <span>{user?.nome || user?.name || 'Usuário'}</span>
           <DownOutlined />
         </div>
       </Dropdown>

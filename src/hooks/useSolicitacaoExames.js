@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import solicitacaoExameService from '../services/solicitacaoExameService';
+import { invalidateCachedRequest } from '../services/requestCache';
 
 /**
  * Normaliza cada item retornado pela API (campos snake_case / aninhados) para os campos
@@ -170,6 +171,13 @@ const useSolicitacaoExames = () => {
   const [loading, setLoading]                 = useState(false);
   const [loadingAcao, setLoadingAcao]         = useState(false);
 
+  const invalidateFluxoExames = useCallback(() => {
+    invalidateCachedRequest('solicitacoes-exames:');
+    invalidateCachedRequest('laboratorio:agendamentos');
+    invalidateCachedRequest('consultas:');
+    invalidateCachedRequest('clinical-data:');
+  }, []);
+
   // ───────────────────────────────────────────────────────────────────────────
   // LISTAGEM
   // ───────────────────────────────────────────────────────────────────────────
@@ -193,22 +201,6 @@ const useSolicitacaoExames = () => {
         lista = lista.data;
       }
       const listaArray = Array.isArray(lista) ? lista : [];
-
-      // Log de diagnóstico com os campos reais confirmados
-      if (listaArray.length > 0) {
-        const raw = listaArray[0];
-        console.group('%c📦 [solicitacoes-exames] Estrutura da API', 'color:#1890ff;font-weight:bold');
-        console.log('Total itens:', listaArray.length, '(1 linha = 1 exame)');
-        console.log('Chaves:', Object.keys(raw).join(', '));
-        console.log('paciente_nid:', raw.paciente_nid);
-        console.log('paciente_nome:', raw.paciente_nome);
-        console.log('medico_nome:', raw.medico_nome);
-        console.log('nome_exame:', raw.nome_exame);
-        console.log('status:', raw.status);
-        console.groupEnd();
-      } else {
-        console.warn('⚠️ [solicitacoes-exames] Lista vazia');
-      }
 
       const listaNormalizada = listaArray.map(normalizar);
       setSolicitacoes(listaNormalizada);
@@ -253,15 +245,17 @@ const useSolicitacaoExames = () => {
    * @param {number} id
    * @param {Object} payload
    */
-  const confirmarExames = useCallback(async (id, payload) => {
+  const confirmarExames = useCallback(async (id, payload, onSuccess) => {
     setLoadingAcao(true);
     try {
       const data = await solicitacaoExameService.confirmarExames(id, payload);
+      invalidateFluxoExames();
       message.success(data?.message || 'Exames confirmados com sucesso.');
       // Atualiza item na lista local
       setSolicitacoes(prev =>
         prev.map(s => s.id === id ? { ...s, status: 'confirmada', ...data?.data } : s)
       );
+      onSuccess?.(data);
       return data;
     } catch (err) {
       const msg = err.response?.data?.message || 'Erro ao confirmar exames.';
@@ -270,7 +264,7 @@ const useSolicitacaoExames = () => {
     } finally {
       setLoadingAcao(false);
     }
-  }, []);
+  }, [invalidateFluxoExames]);
 
   /**
    * Regista o pagamento dos exames.
@@ -284,10 +278,12 @@ const useSolicitacaoExames = () => {
     setLoadingAcao(true);
     try {
       const data = await solicitacaoExameService.processarPagamento(id, payload);
+      invalidateFluxoExames();
       message.success(data?.message || 'Pagamento registado com sucesso.');
       setSolicitacoes(prev =>
         prev.map(s => s.id === id ? { ...s, status: 'paga', status_pagamento: 'pago', ...data?.data } : s)
       );
+      onSuccess?.(data);
       return data;
     } catch (err) {
       const msg = err.response?.data?.message || 'Erro ao processar pagamento.';
@@ -296,7 +292,7 @@ const useSolicitacaoExames = () => {
     } finally {
       setLoadingAcao(false);
     }
-  }, []);
+  }, [invalidateFluxoExames]);
 
   /**
    * Agenda a colheita no laboratório.
@@ -311,6 +307,7 @@ const useSolicitacaoExames = () => {
     setLoadingAcao(true);
     try {
       const data = await solicitacaoExameService.agendarColheita(id, payload);
+      invalidateFluxoExames();
       message.success(data?.message || 'Colheita agendada com sucesso.');
       setSolicitacoes(prev =>
         prev.map(s => s.id === id ? { ...s, status: 'agendada', ...data?.data } : s)
@@ -324,7 +321,7 @@ const useSolicitacaoExames = () => {
     } finally {
       setLoadingAcao(false);
     }
-  }, []);
+  }, [invalidateFluxoExames]);
 
   /**
    * Cancela uma solicitação de exames.
@@ -346,6 +343,7 @@ const useSolicitacaoExames = () => {
     setLoadingAcao(true);
     try {
       const data = await solicitacaoExameService.rejeitarSolicitacao(id, { motivo });
+      invalidateFluxoExames();
       message.success(data?.message || 'Solicitação rejeitada com sucesso.');
       setSolicitacoes(prev => prev.filter(s => s.id !== id));
       onSuccess?.(data);
@@ -357,12 +355,13 @@ const useSolicitacaoExames = () => {
     } finally {
       setLoadingAcao(false);
     }
-  }, []);
+  }, [invalidateFluxoExames]);
 
   const cancelarSolicitacao = useCallback(async (id, motivo, onSuccess) => {
     setLoadingAcao(true);
     try {
       const data = await solicitacaoExameService.cancelarSolicitacao(id, { motivo });
+      invalidateFluxoExames();
       message.success(data?.message || 'Solicitação cancelada.');
       setSolicitacoes(prev => prev.filter(s => s.id !== id));
       onSuccess?.(data);
@@ -374,7 +373,7 @@ const useSolicitacaoExames = () => {
     } finally {
       setLoadingAcao(false);
     }
-  }, []);
+  }, [invalidateFluxoExames]);
 
   // ───────────────────────────────────────────────────────────────────────────
 

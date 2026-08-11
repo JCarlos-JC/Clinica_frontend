@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import patientService from '../services/patientService';
 import { message } from 'antd';
+import { normalizeApiList } from '../services/apiConfig';
+import { getCachedRequest, invalidateCachedRequest, peekCachedRequest, setCachedRequest } from '../services/requestCache';
 
 /**
  * Hook customizado para gerenciar operações CRUD de pacientes
  * Integra com o backend através do patientService
  */
 const usePacientes = () => {
-  const [pacientes, setPacientes] = useState([]);
+  const snapshot = peekCachedRequest('pacientes:list:last', null, { persist: true, allowStale: true });
+  const [pacientes, setPacientes] = useState(snapshot?.pacientes || []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState(snapshot?.pagination || {
     current: 1,
-    pageSize: 5,
+    pageSize: 10,
     total: 0,
   });
+  const currentPage = pagination.current;
+  const defaultPageSize = pagination.pageSize;
 
   /**
    * Busca todos os pacientes com paginação e filtros
@@ -24,20 +29,28 @@ const usePacientes = () => {
     setError(null);
 
     try {
-      const response = await patientService.getAllPatients({
-        page: params.page || pagination.current,
-        per_page: params.pageSize || pagination.pageSize,
+      const { pageSize, ...restParams } = params;
+      delete restParams.force;
+      const queryParams = {
+        page: params.page || currentPage,
+        per_page: pageSize || defaultPageSize,
         search: params.search || '',
-        ...params,
-      });
+        ...restParams,
+      };
 
+      const requestKey = `pacientes:list:${JSON.stringify(queryParams)}`;
+      const response = await getCachedRequest(
+        requestKey,
+        () => patientService.getAllPatients(queryParams),
+        { singleFlight: true }
+      );
 
-      // patientService returns { success, data, pagination? }
+      // patientService pode devolver array direto, wrapper {data}, ou paginador Laravel em data.data.
       const payload = response && response.success ? response.data : response;
-
+      const pacientesPayload = normalizeApiList(payload);
 
       // Normalizar dados para o formato esperado pelo frontend
-      const pacientesNormalizados = (payload || []).map(paciente => ({
+      const pacientesNormalizados = pacientesPayload.map(paciente => ({
         // IDs
         id: paciente.id,
         
@@ -79,8 +92,8 @@ const usePacientes = () => {
         
         // Status e estados
         status: paciente.status,
-        estadoAtual: paciente.estado_atual,
-        statusPagamentoConsulta: paciente.status_pagamento_consulta,
+        estadoAtual: paciente.estado_atual || paciente.status,
+        statusPagamentoConsulta: paciente.status_pagamento_consulta || paciente.status_pagamento,
         
         // Manter campos originais do backend também
         ...paciente,
@@ -89,14 +102,24 @@ const usePacientes = () => {
       setPacientes(pacientesNormalizados);
 
       // Atualizar paginação se disponível
-      const paginationPayload = response && (response.pagination || response.meta || response.data?.pagination || response.data?.meta);
-      if (paginationPayload) {
-        setPagination({
-          current: paginationPayload.current_page || paginationPayload.current || pagination.current,
-          pageSize: paginationPayload.per_page || paginationPayload.per_page || pagination.pageSize,
-          total: paginationPayload.total || pagination.total || 0,
-        });
-      }
+      const paginationPayload = response && (response.pagination || response.meta || response.data?.pagination || response.data?.meta || response.data);
+      const nextPagination = paginationPayload
+        ? {
+            current: paginationPayload.current_page || paginationPayload.current || params.page || currentPage,
+            pageSize: paginationPayload.per_page || paginationPayload.pageSize || params.pageSize || defaultPageSize,
+            total: paginationPayload.total ?? pacientesNormalizados.length,
+          }
+        : {
+            current: params.page || currentPage,
+            pageSize: params.pageSize || defaultPageSize,
+            total: pacientesNormalizados.length,
+          };
+
+      setPagination(nextPagination);
+      setCachedRequest('pacientes:list:last', {
+        pacientes: pacientesNormalizados,
+        pagination: nextPagination,
+      }, { persist: true });
 
       return pacientesNormalizados;
     } catch (err) {
@@ -106,7 +129,7 @@ const usePacientes = () => {
     } finally {
       setLoading(false);
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [currentPage, defaultPageSize]);
 
   /**
    * Busca um paciente específico por ID
@@ -189,7 +212,7 @@ const usePacientes = () => {
         throw new Error(`Campos obrigatórios estão faltando: ${camposFaltando.join(', ')}`);
       }
       // Verificar se temos token de autenticação
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         throw new Error('Token de autenticação não encontrado. Faça login novamente.');
       }
@@ -203,29 +226,10 @@ const usePacientes = () => {
         if (response.errors) {
           console.error('❌ Erros de validação do Laravel:', response.errors);
           
-          // RETRY AUTOMÁTICO para raca_id inválida
-          if (response.errors.raca_id && dadosBackend._tentativasRaca && dadosBackend._tentativasRaca.length > 0) {
-
-            const proximoId = dadosBackend._tentativasRaca.shift();
-            dadosBackend.raca_id = proximoId;
-            
-            // Tentar novamente
-            return await criarPaciente(dadosBackend);
-          }
-          
-          // Mostrar cada erro de validação
-          Object.keys(response.errors).forEach(field => {
-            const errorMessages = response.errors[field];
-            if (Array.isArray(errorMessages)) {
-              errorMessages.forEach(msg => {
-                message.error(`Campo "${field}": ${msg}`);
-              });
-            } else {
-              message.error(`Campo "${field}": ${errorMessages}`);
-            }
-          });
-          
-          throw new Error('Erro de validação dos campos');
+          const validationError = new Error('Erro de validação dos campos');
+          validationError.errors = response.errors;
+          validationError.response = { data: { errors: response.errors, message: response.message } };
+          throw validationError;
         } else {
           // Erro geral sem detalhes de validação
           const errorMsg = response.message || response.error || 'Erro desconhecido do servidor';
@@ -236,8 +240,10 @@ const usePacientes = () => {
             
       message.success('Paciente cadastrado com sucesso!');
 
+      invalidateCachedRequest('pacientes:list:');
+
       // Recarregar lista de pacientes
-      await carregarPacientes();
+      await carregarPacientes({ force: true });
 
       return response.data;
     } catch (err) {
@@ -268,7 +274,7 @@ const usePacientes = () => {
         // Dados pessoais
         nome: dadosPaciente.nome,
         apelido: dadosPaciente.apelido,
-        data_nascimento: dadosPaciente.dataNascimento,
+        data_nascimento: dadosPaciente.data_nascimento || dadosPaciente.dataNascimento,
         genero: dadosPaciente.genero,
         
         // Documento de identidade - CRÍTICO PARA UTENTES REGULARES
@@ -305,15 +311,28 @@ const usePacientes = () => {
       };
 
 
+      Object.keys(dadosBackend).forEach((key) => {
+        if (dadosBackend[key] === undefined || dadosBackend[key] === null || dadosBackend[key] === '') {
+          delete dadosBackend[key];
+        }
+      });
+
       const response = await patientService.updatePatient(id, dadosBackend);
-      const payload = response && response.success ? response.data : response;
 
       
       if (response && response.success) {
         message.success(response.message || 'Paciente atualizado com sucesso!');
+        invalidateCachedRequest('pacientes:list:');
+        await carregarPacientes({ force: true });
+        return response.data;
       } else {
-        message.error('Erro ao atualizar paciente. Verifique os dados.');
-        return null;
+        if (response?.errors) {
+          Object.entries(response.errors).forEach(([field, messages]) => {
+            message.error(`${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`);
+          });
+        }
+
+        throw new Error(response?.message || 'Erro ao atualizar paciente. Verifique os dados.');
       }
 
     } catch (err) {
@@ -351,8 +370,10 @@ const usePacientes = () => {
 
       message.success('Paciente removido com sucesso!');
 
+      invalidateCachedRequest('pacientes:list:');
+
       // Recarregar lista de pacientes
-      await carregarPacientes();
+      await carregarPacientes({ force: true });
 
       return true;
     } catch (err) {
@@ -377,7 +398,7 @@ const usePacientes = () => {
       const payload = response && response.success ? response.data : response;
 
       // Normalizar dados
-      const pacientesNormalizados = (payload || []).map(paciente => ({
+      const pacientesNormalizados = normalizeApiList(payload).map(paciente => ({
         // IDs
         id: paciente.id,
         
@@ -411,7 +432,7 @@ const usePacientes = () => {
    */
   useEffect(() => {
     // Verificar se tem token antes de carregar
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
     
 
     
@@ -426,7 +447,7 @@ const usePacientes = () => {
     } else {
       console.warn('⚠️ Token não encontrado - não carregando pacientes');
     }
-  }, []); // Executar apenas uma vez
+  }, [carregarPacientes]);
 
   return {
     // Estado

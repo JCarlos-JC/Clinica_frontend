@@ -321,7 +321,7 @@ const LaboratorioPaciente = () => {
           {v || '—'}
           {record.observacoes && (
             <Tooltip title={record.observacoes}>
-              <span style={{ color: '#faad14', marginLeft: 6 }}>ⓘ</span>
+              <span style={{ color: '#fa8c16', marginLeft: 6 }}>ⓘ</span>
             </Tooltip>
           )}
         </span>

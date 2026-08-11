@@ -1,6 +1,17 @@
 import axios from 'axios';
 
-const API_URL = 'http://196.3.100.216/api';
+const API_URL = (process.env.REACT_APP_API_URL || 'http://196.3.100.216/api').replace(/\/$/, '');
+
+const REFERENCE_RESOURCES = new Set([
+    'racas',
+    'tipos-utentes',
+    'unidades-organicas',
+    'tipos-documentos',
+    'provincias',
+    'distritos',
+    'bairros',
+    'graus-parentesco'
+]);
 
 class PatientService {
     constructor() {
@@ -15,13 +26,39 @@ class PatientService {
         // Debounce para evitar múltiplas chamadas rápidas
         this.configDebounceTimeout = null;
     }
+
+    async getReferenceData(resource, params = {}) {
+        if (!REFERENCE_RESOURCES.has(resource)) {
+            throw new Error(`Recurso de referência inválido: ${resource}`);
+        }
+
+        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+        if (!token) {
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+
+        const response = await axios.get(`${API_URL}/pacientes/${resource}`, {
+            params,
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json'
+            }
+        });
+
+        const payload = response.data?.data ?? response.data ?? [];
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.items)) return payload.items;
+        if (Array.isArray(payload?.results)) return payload.results;
+        return [];
+    }
     /**
      * Get all patients
      * GET /api/pacientes
      */
     async getAllPatients(params = {}) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -41,7 +78,7 @@ class PatientService {
                 return {
                     success: true,
                     data: response.data.data,
-                    pagination: response.data.pagination || null
+                    pagination: response.data.meta || response.data.pagination || null
                 };
             }
             
@@ -85,7 +122,7 @@ class PatientService {
      */
     async getPatientById(id) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -135,7 +172,7 @@ class PatientService {
      */
     async searchPatients(query) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -188,11 +225,11 @@ class PatientService {
      */
     async createPatient(patientData) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             console.log('📤 Criando paciente:', patientData); // DEBUG
             
-            const response = await axios.post(`${API_URL}/pacientes/`, patientData, {
+            const response = await axios.post(`${API_URL}/pacientes`, patientData, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -258,7 +295,7 @@ class PatientService {
      */
     async updatePatient(id, patientData) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             console.log('📤 PatientService - Atualizando paciente ID:', id);
             console.log('📦 PatientService - Dados enviados:', patientData);
@@ -341,7 +378,7 @@ class PatientService {
      */
     async deletePatient(id) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             console.log('📤 Deletando paciente ID:', id); // DEBUG
             
@@ -377,7 +414,7 @@ class PatientService {
      */
     async getStatistics() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             const response = await axios.get(`${API_URL}/pacientes/estatisticas`, {
                 headers: {
@@ -452,7 +489,7 @@ class PatientService {
      */
     async validateReferences(data) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             console.log('📤 Validando referências com o serviço de pacientes:', data);
             
@@ -500,7 +537,7 @@ class PatientService {
      */
     async confirmarSolicitacaoExame(solicitacaoId, payload = {}) {
         try {
-            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             console.log('📤 [PatientService] Confirmando solicitação de exame ID:', solicitacaoId);
 
             const response = await axios.put(

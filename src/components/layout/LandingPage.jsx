@@ -46,8 +46,8 @@ const LandingPage = () => {
             alt="Logo"
             style={{ height: 50 }}
           />
-          <Divider type="vertical" style={{ height: 40, margin: '0 16px', borderColor: '#28a745' }} />
-          <Title level={4} style={{ margin: 0, color: '#28a745' }}>
+          <Divider type="vertical" style={{ height: 40, margin: '0 16px', borderColor: '#52c41a' }} />
+          <Title level={4} style={{ margin: 0, color: '#52c41a' }}>
             Clínica Universitária
           </Title>
         </div>
@@ -57,8 +57,8 @@ const LandingPage = () => {
           icon={<UserOutlined />}
           onClick={showLoginModal}
           style={{ 
-            background: '#28a745', 
-            borderColor: '#28a745',
+            background: '#52c41a', 
+            borderColor: '#52c41a',
             borderRadius: '4px',
             height: '40px'
           }}
@@ -89,7 +89,7 @@ const LandingPage = () => {
             fontSize: '16px',
             fontWeight: 'bold',
             background: 'white',
-            color: '#28a745',
+            color: '#52c41a',
             border: 'none'
           }}
         >
@@ -110,7 +110,7 @@ const LandingPage = () => {
                 style={{ height: '100%', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                 hoverable
               >
-                <MedicineBoxOutlined style={{ fontSize: '48px', color: '#28a745', marginBottom: '16px' }} />
+                <MedicineBoxOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />
                 <Title level={4}>Atendimento Especializado</Title>
                 <Paragraph>
                   Oferecemos consultas em diversas especialidades médicas com profissionais qualificados e estudantes supervisionados.
@@ -122,7 +122,7 @@ const LandingPage = () => {
                 style={{ height: '100%', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                 hoverable
               >
-                <ClockCircleOutlined style={{ fontSize: '48px', color: '#28a745', marginBottom: '16px' }} />
+                <ClockCircleOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />
                 <Title level={4}>Horário Estendido</Title>
                 <Paragraph>
                   Atendimento de segunda a sexta-feira, das 7h às 19h, para melhor atender às necessidades da comunidade.
@@ -134,7 +134,7 @@ const LandingPage = () => {
                 style={{ height: '100%', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                 hoverable
               >
-                <TeamOutlined style={{ fontSize: '48px', color: '#28a745', marginBottom: '16px' }} />
+                <TeamOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />
                 <Title level={4}>Equipe Multidisciplinar</Title>
                 <Paragraph>
                   Nossa equipe inclui médicos, enfermeiros, fisioterapeutas e outros profissionais para um cuidado completo.
@@ -159,19 +159,19 @@ const LandingPage = () => {
           {/* Estatísticas */}
           <Row gutter={[32, 32]} justify="center" style={{ margin: '48px 0' }}>
             <Col xs={24} sm={8}>
-              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#28a745', color: 'white' }}>
+              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#52c41a', color: 'white' }}>
                 <Title level={2} style={{ color: 'white', margin: 0 }}>+15.000</Title>
                 <Text style={{ color: 'white', fontSize: '16px' }}>Atendimentos por ano</Text>
               </Card>
             </Col>
             <Col xs={24} sm={8}>
-              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#28a745', color: 'white' }}>
+              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#52c41a', color: 'white' }}>
                 <Title level={2} style={{ color: 'white', margin: 0 }}>+20</Title>
                 <Text style={{ color: 'white', fontSize: '16px' }}>Especialidades médicas</Text>
               </Card>
             </Col>
             <Col xs={24} sm={8}>
-              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#28a745', color: 'white' }}>
+              <Card style={{ textAlign: 'center', borderRadius: '8px', background: '#52c41a', color: 'white' }}>
                 <Title level={2} style={{ color: 'white', margin: 0 }}>+50</Title>
                 <Text style={{ color: 'white', fontSize: '16px' }}>Profissionais qualificados</Text>
               </Card>

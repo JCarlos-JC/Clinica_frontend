@@ -1,6 +1,6 @@
-import React, { useContext, useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClinicContext } from '../../context/ClinicContext';
+import authService from '../../services/authService';
 import { Layout, Dropdown, Typography, Menu, Avatar, Button } from 'antd';
 import { 
   UserOutlined, 
@@ -12,8 +12,8 @@ const { Header } = Layout;
 const { Title } = Typography;
 
 const Navbar = () => {
-  const { logout, user } = useContext(ClinicContext);
   const navigate = useNavigate();
+  const user = useMemo(() => authService.getUser(), []);
 
   // Usar useCallback para evitar re-criação desnecessária da função
   const handleHomeClick = useCallback(() => {
@@ -36,7 +36,7 @@ const Navbar = () => {
   const handleMenuClick = useCallback(({ key }) => {
     try {
       if (key === 'logout') {
-        logout();
+        authService.logout();
         // Forçando o redirecionamento para a página inicial
         setTimeout(() => {
           navigate('/', { replace: true });
@@ -48,7 +48,7 @@ const Navbar = () => {
     } catch (error) {
       console.error('Erro no menu:', error);
     }
-  }, [logout, navigate]);
+  }, [navigate]);
 
   const menu = (
     <Menu onClick={handleMenuClick}>
@@ -58,58 +58,37 @@ const Navbar = () => {
   );
 
   return (
-    <Header
-      style={{
-        background: '#fff',
-        borderBottom: '3px solid #28a745',
-        padding: '15px 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between', // Alterado para espaçar os elementos
-        height: '102px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
-      }}
-    >      <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 16,
-      justifyContent: 'center'
-    }}>
+    <Header className="clinic-navbar">
+      <div className="clinic-navbar-brand">
         <div style={{ position: 'relative' }}>
           <img
             src="/assets/images/UEM.png"
             alt="Logo"
-            style={{ height: 100 }} // Aumentei o tamanho da logo para melhor visibilidade
+            className="clinic-navbar-logo"
           />
         </div>
 
-        <div
-          style={{
-            borderLeft: '2px solid #28a745',
-            height: '50px',
-            margin: '0 16px'
-          }}
-        />
+        <div className="clinic-navbar-divider" />
 
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-          <Title level={3} style={{ margin: 0, color: '#28a745' }}>
+        <div className="clinic-navbar-title">
+          <Title level={3}>
             Sistema da Clínica Universitária
           </Title>
-          <span style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
+          <span>
             SCLIUEM
           </span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div className="clinic-navbar-actions">
         {/* Navigation menu based on user role */}
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div className="clinic-navbar-links">
           <Button 
             type="default" 
             icon={<HomeOutlined />} 
             onClick={handleHomeClick}
             title="Página Inicial"
-            style={{ backgroundColor: '#28a745', color: 'white', borderColor: '#28a745' }}
+            className="clinic-home-button"
             loading={false} // Evitar loading infinito
           >
             Home
@@ -118,9 +97,9 @@ const Navbar = () => {
         </div>
 
         <Dropdown overlay={menu}>
-          <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="clinic-user-menu">
             <Avatar icon={<UserOutlined />} />
-            <span>{user?.name || 'Usuário'}</span>
+            <span>{user?.nome || user?.name || 'Usuário'}</span>
             <DownOutlined />
           </div>
         </Dropdown>

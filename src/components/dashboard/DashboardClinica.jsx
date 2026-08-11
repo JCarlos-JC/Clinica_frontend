@@ -1,19 +1,17 @@
-import React, { useContext } from 'react';
-import { ClinicContext } from '../../context/ClinicContext';
+import React, { useMemo } from 'react';
 import { Card, Col, Row, Statistic, Typography } from 'antd';
 import { Pie, Column } from '@ant-design/plots';
 import { UserOutlined, MedicineBoxOutlined, FileDoneOutlined } from '@ant-design/icons';
+import useClinicalBackendData from '../../hooks/useClinicalBackendData';
 
 const { Title } = Typography;
 
 const Dashboard = () => {
-  // Adicionar valores padrão para todas as variáveis
-  const { pacientes = [], triagensRealizadas = [], consultasRealizadas = [] } = useContext(ClinicContext);
+  const { pacientes = [], triagensRealizadas = [], consultasRealizadas = [], totals = {}, loading } = useClinicalBackendData();
 
-  // Adicionar verificações de segurança ao acessar propriedades
-  const totalPacientes = pacientes?.length || 0;
-  const totalTriagens = triagensRealizadas?.length || 0;
-  const totalConsultas = consultasRealizadas?.length || 0;
+  const totalPacientes = totals.pacientes ?? pacientes?.length ?? 0;
+  const totalTriagens = totals.triagensRealizadas ?? triagensRealizadas?.length ?? 0;
+  const totalConsultas = totals.consultasRealizadas ?? consultasRealizadas?.length ?? 0;
 
   // Dados para o gráfico de Pizza com verificações de segurança
   const pieData = [
@@ -39,14 +37,20 @@ const Dashboard = () => {
     }
   };
 
-  // Dados para o gráfico de Coluna (barras) - Simulando crescimento
-  const columnData = [
-    { month: 'Janeiro', pacientes: 10 },
-    { month: 'Fevereiro', pacientes: 20 },
-    { month: 'Março', pacientes: 30 },
-    { month: 'Abril', pacientes: 40 },
-    { month: 'Maio', pacientes: totalPacientes }, // Usando a variável segura
-  ];
+  const columnData = useMemo(() => {
+    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const contagem = Array.from({ length: 12 }, (_, index) => ({ month: meses[index], pacientes: 0 }));
+
+    pacientes.forEach((paciente) => {
+      const dataCadastro = paciente.dataCadastro || paciente.data_cadastro || paciente.created_at;
+      const data = dataCadastro ? new Date(dataCadastro) : null;
+      if (data && !Number.isNaN(data.getTime())) {
+        contagem[data.getMonth()].pacientes += 1;
+      }
+    });
+
+    return contagem.filter(item => item.pacientes > 0);
+  }, [pacientes]);
 
   const columnConfig = {
     data: columnData,
@@ -61,14 +65,14 @@ const Dashboard = () => {
   // Estilos para melhorar a UI
   const dashboardStyle = {
     padding: '24px',
-    background: 'linear-gradient(to right, #BDBDBD, #edf2f7)',
+    background: 'linear-gradient(135deg, #f0faf7, #ffffff)',
     minHeight: 'calc(100vh - 64px)', // considerando header de 64px
     borderRadius: '8px',
   };
 
   const titleStyle = {
     marginBottom: '32px',
-    color: '#2d3748',
+    color: '#722ed1',
     textAlign: 'center',
     fontSize: '28px',
     fontWeight: 600,
@@ -110,6 +114,7 @@ const Dashboard = () => {
       <Row gutter={[24, 24]}>
         <Col xs={24} sm={8}>
           <Card
+            loading={loading}
             style={statisticCardStyle}
             hoverable
             bodyStyle={{ padding: '24px' }}
@@ -132,19 +137,20 @@ const Dashboard = () => {
 
         <Col xs={24} sm={8}>
           <Card
+            loading={loading}
             style={statisticCardStyle}
             hoverable
             bodyStyle={{ padding: '24px' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ ...iconStyle, background: 'rgba(82, 196, 26, 0.1)', color: '#52c41a' }}>
+              <div style={{ ...iconStyle, background: 'rgba(40, 167, 69, 0.1)', color: '#28a745' }}>
                 <MedicineBoxOutlined />
               </div>
               <span style={{ fontSize: '18px', fontWeight: 500 }}>Triagens</span>
             </div>
             <Statistic
               value={totalTriagens}
-              valueStyle={{ color: '#52c41a', fontSize: '28px', fontWeight: 'bold' }}
+              valueStyle={{ color: '#28a745', fontSize: '28px', fontWeight: 'bold' }}
             />
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#718096' }}>
               Triagens realizadas
@@ -154,6 +160,7 @@ const Dashboard = () => {
 
         <Col xs={24} sm={8}>
           <Card
+            loading={loading}
             style={statisticCardStyle}
             hoverable
             bodyStyle={{ padding: '24px' }}

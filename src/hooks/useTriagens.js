@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import triagemService from '../services/triagemService';
+import { normalizeApiList } from '../services/apiConfig';
 
 // Hook para buscar triagens do serviço na porta 8005
 export default function useTriagens(initialParams = { page: 1, per_page: 20 }) {
@@ -12,22 +13,15 @@ export default function useTriagens(initialParams = { page: 1, per_page: 20 }) {
   const fetchTriagens = useCallback(async (overrideParams) => {
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
     try {
       const p = { ...params, ...(overrideParams || {}) };
       const data = await triagemService.getTriagens(p, token);
-      // Espera-se que a API retorne { data: [...], meta: { total } } ou um array
-      if (Array.isArray(data)) {
-        setTriagens(data);
-        setTotal(data.length);
-      } else if (data.data) {
-        setTriagens(data.data || []);
-        setTotal(data.meta?.total || (data.data || []).length);
-      } else {
-        // fallback
-        setTriagens(data || []);
-        setTotal((data && data.length) || 0);
-      }
+      const lista = normalizeApiList(data);
+      const meta = data?.meta || data?.pagination || data?.data?.meta || data?.data?.pagination || data?.data || {};
+
+      setTriagens(lista);
+      setTotal(meta.total ?? lista.length);
 
       // Atualizar params apenas se houve override para evitar loop
       if (overrideParams) {

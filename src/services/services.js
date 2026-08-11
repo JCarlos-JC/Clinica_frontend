@@ -19,6 +19,7 @@ export const authService = {
 
         if (response.data.access_token) {
             localStorage.setItem('access_token', response.data.access_token);
+            localStorage.setItem('token', response.data.access_token);
             localStorage.setItem('user', JSON.stringify(response.data.user));
 
             if (response.data.refresh_token) {
@@ -37,6 +38,7 @@ export const authService = {
             await api.post(API_ENDPOINTS.AUTH.LOGOUT);
         } finally {
             localStorage.removeItem('access_token');
+            localStorage.removeItem('token');
             localStorage.removeItem('refresh_token');
             localStorage.removeItem('user');
         }
@@ -62,6 +64,7 @@ export const authService = {
 
         if (response.data.access_token) {
             localStorage.setItem('access_token', response.data.access_token);
+            localStorage.setItem('token', response.data.access_token);
         }
 
         return response.data;
@@ -71,7 +74,7 @@ export const authService = {
      * Check if user is authenticated
      */
     isAuthenticated() {
-        return !!localStorage.getItem('access_token');
+        return !!(localStorage.getItem('access_token') || localStorage.getItem('token'));
     },
 
     /**

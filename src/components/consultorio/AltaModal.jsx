@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   Tabs,
@@ -21,7 +21,6 @@ import {
   CheckCircleOutlined,
   MedicineBoxOutlined,
 } from '@ant-design/icons';
-import { ClinicContext } from '../../context/ClinicContext';
 import './AltaModal.css'; // Will create this file next
 
 const { TabPane } = Tabs;
@@ -46,9 +45,6 @@ const AltaModal = ({ open, onCancel, paciente, onFinish }) => {
   // Forms
   const [exameForm] = Form.useForm();
   const [prescricaoForm] = Form.useForm();
-
-  // Acessar o contexto da clínica
-  const { examesPendentes, setExamesPendentes } = useContext(ClinicContext);
 
   // Reset states when modal is opened or closed
   useEffect(() => {
@@ -95,26 +91,8 @@ const AltaModal = ({ open, onCancel, paciente, onFinish }) => {
 
     // Adiciona os exames à lista local
     setExames([...exames, ...novosExames]);
-    // Se marcado para enviar ao laboratório, adiciona aos exames pendentes para aprovação
     if (values.enviarParaLaboratorio) {
-      const exameParaAprovacao = {
-        id: timestamp,
-        pacienteId: paciente.id,
-        nid: paciente.nid,
-        nome: paciente.nome,
-        apelido: paciente.apelido,
-        dataNascimento: paciente.dataNascimento,
-        examesSolicitados: values.exames.map(exame => typeof exame === 'object' ? (exame.nome || JSON.stringify(exame)) : String(exame)).join(', '), // String com todos os exames selecionados
-        observacoes: values.observacoes,
-        dataSolicitacao: new Date().toLocaleString(),
-        status: 'pendente', // Status para aprovação na aba "Solicitações de Exames"
-        statusPagamento: 'pendente',
-        solicitadoPor: 'Consultório',
-        prioridade: values.prioridade || 'Normal',
-        dataColeta: dataColeta.format('DD/MM/YYYY')
-      };
-      setExamesPendentes([...examesPendentes, exameParaAprovacao]);
-      message.success(`${values.exames.length} exame(s) enviado(s) para aprovação na aba "Solicitações de Exames"!`);
+      message.success(`${values.exames.length} exame(s) preparado(s) para envio ao laboratório pelo backend.`);
     }
     exameForm.resetFields();
     setExameModalVisible(false);

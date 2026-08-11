@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, Space, message, Tabs, Card, Tag, List, Typography, Divider, Alert, Row, Col, Select, InputNumber, TimePicker } from 'antd';
 import moment from 'moment';
 import {
@@ -15,11 +15,13 @@ import {
   EyeOutlined,
   PlusOutlined,
   DeleteOutlined,
-  EditOutlined
+  EditOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import ConsultaDetalhadaModal from './ConsultaDetalhadaModal';
 import useConsultas from '../../hooks/useConsultas';
-import axios from 'axios';
+import api from '../../services/api';
+import { getWorkflowStatus, isOutOfConsultationQueue } from '../../utils/patientWorkflowStatus';
 
 const { TabPane } = Tabs;
 const { Text, Title } = Typography;
@@ -138,9 +140,9 @@ const Consultorio = () => {
   const [medicosFiltrados, setMedicosFiltrados] = useState([]);
   const [especialidadesAPI, setEspecialidadesAPI] = useState([]);
   const [user, setUser] = useState(null);
-  const [loadingMedicos, setLoadingMedicos] = useState(false);
+  const [, setLoadingMedicos] = useState(false);
   const [loadingMedicosFiltrados, setLoadingMedicosFiltrados] = useState(false);
-  const [loadingEspecialidades, setLoadingEspecialidades] = useState(false);
+  const [, setLoadingEspecialidades] = useState(false);
 
   // Carregar usuário do localStorage ao montar o componente
   useEffect(() => {
@@ -149,37 +151,93 @@ const Consultorio = () => {
       if (savedUser) {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
-        console.log('✅ Usuário carregado:', parsedUser);
       }
-    } catch (error) {
-      console.error('❌ Erro ao carregar usuário:', error);
+    } catch {
+
     }
   }, []);
+
+  const normalizarListaApi = useCallback((payload) => {
+    const data = payload?.data?.data || payload?.data || payload || [];
+    return Array.isArray(data) ? data : [];
+  }, []);
+
+  const normalizarEspecialidade = useCallback((especialidade) => {
+    if (typeof especialidade === 'string') {
+      return { id: especialidade, nome: especialidade };
+    }
+
+    const nome = especialidade?.nome || especialidade?.designacao || especialidade?.descricao || especialidade?.especialidade;
+    if (!nome) return null;
+
+    return {
+      ...especialidade,
+      id: especialidade?.id || especialidade?.codigo || nome,
+      nome,
+    };
+  }, []);
+
+  const carregarEspecialidadesBackend = useCallback(async () => {
+    const endpoints = [
+      '/api/pacientes/consultorio/especialidades',
+      '/api/options/especialidades',
+    ];
+
+    let ultimoErro = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await api.get(endpoint);
+        const especialidades = normalizarListaApi(response.data)
+          .map(normalizarEspecialidade)
+          .filter(Boolean);
+
+        if (especialidades.length > 0) {
+          return especialidades;
+        }
+      } catch (error) {
+        ultimoErro = error;
+      }
+    }
+
+    throw ultimoErro || new Error('Nenhuma especialidade encontrada');
+  }, [normalizarEspecialidade, normalizarListaApi]);
+
+  const isMedico = useCallback((usuario) => {
+    const cargo = String(usuario?.cargo || usuario?.tipo_usuario || '').toLowerCase();
+    const roles = Array.isArray(usuario?.roles) ? usuario.roles : [];
+    const perfis = Array.isArray(usuario?.perfis) ? usuario.perfis : [];
+    return cargo.includes('medico') || cargo.includes('médico') ||
+      roles.some(role => String(role?.nome || role?.codigo || role).toLowerCase().includes('medico')) ||
+      perfis.some(perfil => String(perfil?.nome || perfil?.codigo || perfil).toLowerCase().includes('medico'));
+  }, []);
+
+  const carregarMedicosBackend = useCallback(async (params = {}) => {
+    try {
+      const response = await api.get('/api/pacientes/consultorio/medicos', { params });
+      return normalizarListaApi(response.data);
+    } catch (error) {
+      const response = await api.get('/api/users', { params: { per_page: 1000 } });
+      const usuarios = normalizarListaApi(response.data);
+      const especialidade = params.especialidade;
+      return usuarios.filter(usuario => {
+        if (!isMedico(usuario)) return false;
+        if (!especialidade) return true;
+        const area = String(usuario.cargo || usuario.especialidade || '').toLowerCase();
+        return area.includes(String(especialidade).toLowerCase());
+      });
+    }
+  }, [isMedico, normalizarListaApi]);
 
   // Buscar médicos da API ao montar o componente
   useEffect(() => {
     const fetchMedicos = async () => {
       setLoadingMedicos(true);
       try {
-        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-        
-        // Buscar médicos da porta 8007 (consultation-service)
-        const response = await axios.get('http://196.3.100.216/api/medicos/', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        // Verificar formato da resposta e extrair os dados
-        const medicosData = response?.data?.data || response?.data || [];
+        const medicosData = await carregarMedicosBackend();
         setMedicos(medicosData);
-        console.log('✅ Médicos carregados da porta 8007:', medicosData);
-        console.log('📋 Estrutura do primeiro médico:', medicosData[0]);
       } catch (error) {
-        console.error('❌ Erro ao buscar médicos:', error);
-        message.error('Erro ao carregar lista de médicos');
+        message.error(error.response?.data?.message || 'Erro ao carregar lista de médicos');
         setMedicos([]);
       } finally {
         setLoadingMedicos(false);
@@ -187,64 +245,39 @@ const Consultorio = () => {
     };
 
     fetchMedicos();
-  }, []);
+  }, [carregarMedicosBackend]);
 
   // Buscar especialidades da API ao montar o componente
   useEffect(() => {
     const fetchEspecialidades = async () => {
       setLoadingEspecialidades(true);
       try {
-        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-        
-        // Buscar especialidades da porta 8007 (consultation-service)
-        const response = await axios.get('http://196.3.100.216/api/especialidades/', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        // Verificar formato da resposta e extrair os dados
-        const especialidadesData = response?.data?.data || response?.data || [];
+        const especialidadesData = await carregarEspecialidadesBackend();
         setEspecialidadesAPI(especialidadesData);
-        console.log('✅ Especialidades carregadas da porta 8007:', especialidadesData);
       } catch (error) {
-        console.error('❌ Erro ao buscar especialidades:', error);
-        console.log('⚠️ Usando especialidades dos médicos como fallback');
-        // Fallback para especialidades dos médicos se a API falhar
-        const especialidadesFallback = [...new Set(medicos.map(m => m.cargo || m.especialidade).filter(Boolean))];
-        setEspecialidadesAPI(especialidadesFallback);
+        message.error(error.response?.data?.message || 'Não foi possível carregar as especialidades. Verifique a ligação ao backend.');
+        setEspecialidadesAPI([]);
       } finally {
         setLoadingEspecialidades(false);
       }
     };
 
-    // Só buscar se já tiver médicos carregados (para o fallback)
-    if (medicos.length > 0) {
-      fetchEspecialidades();
-    }
-  }, [medicos]);
+    fetchEspecialidades();
+  }, [carregarEspecialidadesBackend]);
 
-  // Obter ID do médico logado para filtrar consultas
+  // Obter ID do médico logado para filtrar consultas.
+  // Perfis administrativos não devem filtrar por user.id, senão as tabelas ficam vazias.
   const getMedicoId = () => {
-    // Primeiro tentar obter do user
-    if (user?.id) {
-      return user.id;
-    }
-
-    // Fallback: tentar obter do localStorage
-    try {
-      const savedUser = localStorage.getItem('user');
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        return parsedUser.id || null;
+    const usuarioAtual = user || (() => {
+      try {
+        const savedUser = localStorage.getItem('user');
+        return savedUser ? JSON.parse(savedUser) : null;
+      } catch {
+        return null;
       }
-    } catch (error) {
-      console.error('Erro ao obter user do localStorage:', error);
-    }
+    })();
 
-    return null;
+    return isMedico(usuarioAtual) ? (usuarioAtual?.id || null) : null;
   };
 
   const medicoId = getMedicoId();
@@ -278,56 +311,32 @@ const Consultorio = () => {
     consultasRealizadas,
     pacientesComExames: pacientesComExamesAPI,
     loadingPendentes,
+    loadingRealizadas,
     fetchConsultasPendentes,
     fetchConsultasRealizadas,
     fetchPacientesComExames,
-    fetchPrescricoesPaciente,
     finalizarConsulta,
     solicitarExames,
     registrarAlta,
     registrarObito,
     transferirMedico,
     transferirEspecialidade,
+    criarTransferencia,
     adicionarPrescricao,
     atualizarPrescricao,
     removerPrescricao,
   } = useConsultas(medicoId);
 
-  // Log para debug - ver se o filtro está funcionando
-  useEffect(() => {
-    if (medicoId) {
-      console.log(`✅ Filtrando consultas para o médico ID: ${medicoId}`);
-    } else {
-      console.log('⚠️ Nenhum ID de médico encontrado - mostrando todas as consultas');
-    }
-  }, [medicoId]);
+  // As listas são carregadas pelo hook e atualizadas após ações do utilizador.
+  // Evita polling constante, que fazia a tabela voltar ao estado de loading repetidamente.
 
-  // Log para debug - ver dados recebidos
-  useEffect(() => {
-    console.log('📊 Consultas Pendentes recebidas da API:', consultasPendentesAPI);
-    console.log('📊 Total de consultas pendentes:', consultasPendentesAPI?.length || 0);
-    console.log('📊 Pacientes Com Exames:', pacientesComExamesAPI);
-    console.log('📊 Loading Pendentes:', loadingPendentes);
-  }, [consultasPendentesAPI, pacientesComExamesAPI, loadingPendentes]);
-
-  // Atualizar a cada 30 segundos
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchConsultasPendentes();
-      fetchPacientesComExames();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [fetchConsultasPendentes, fetchPacientesComExames]);
-
-  // Obter especialidades únicas (da API ou dos médicos como fallback)
-  const especialidades = especialidadesAPI.length > 0 
-    ? especialidadesAPI 
-    : [...new Set(medicos.map(m => m.cargo || m.especialidade).filter(Boolean))];
+  // Obter especialidades vindas da API
+  const especialidades = especialidadesAPI;
 
   // Função helper para filtrar médicos por especialidade
   const getMedicosPorEspecialidade = (especialidade) => {
-    return medicos.filter(m => (m.cargo || m.especialidade) === especialidade);
+    const especialidadeNormalizada = String(especialidade || '').toLowerCase();
+    return medicos.filter(m => String(m.cargo || m.especialidade || '').toLowerCase().includes(especialidadeNormalizada));
   };
 
   // Função para buscar médicos filtrados por especialidade da API
@@ -339,72 +348,23 @@ const Consultorio = () => {
 
     setLoadingMedicosFiltrados(true);
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      
-      console.log('🔍 Buscando médicos por especialidade:', especialidade);
-      
-      // Buscar médicos filtrados por especialidade da porta 8007
-      const response = await axios.get(`http://196.3.100.216/api/medicos?especialidade=${encodeURIComponent(especialidade)}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      // Verificar formato da resposta e extrair os dados
-      const medicosData = response?.data?.data || response?.data || [];
-      
-      console.log(`✅ Resposta da API para especialidade "${especialidade}":`, {
-        total: medicosData.length,
-        medicos: medicosData.map(m => ({
-          id: m.id,
-          nome: m.name || m.nome,
-          especialidade: m.cargo || m.especialidade
-        }))
-      });
-      
-      // Se a API retornar apenas 1 médico, fazer fallback para filtro local
-      if (medicosData.length <= 1) {
-        console.warn('⚠️ API retornou apenas 1 médico, usando filtro local como fallback');
-        const medicosLocais = medicos.filter(m => 
-          (m.cargo || m.especialidade) === especialidade
-        );
-        console.log('📋 Médicos locais da especialidade:', {
-          total: medicosLocais.length,
-          medicos: medicosLocais.map(m => ({
-            id: m.id,
-            nome: m.name || m.nome,
-            especialidade: m.cargo || m.especialidade
-          }))
+      let medicosData = [];
+      try {
+        const response = await api.get('/api/pacientes/consultorio/consultas/medicos-por-especialidade', {
+          params: { especialidade }
         });
-        setMedicosFiltrados(medicosLocais);
-      } else {
-        setMedicosFiltrados(medicosData);
+        medicosData = normalizarListaApi(response.data);
+      } catch {
+        medicosData = await carregarMedicosBackend({ especialidade });
       }
-      
-      console.log(`✅ Total de médicos disponíveis para transferência: ${medicosData.length > 1 ? medicosData.length : medicos.filter(m => (m.cargo || m.especialidade) === especialidade).length}`);
+
+      setMedicosFiltrados(medicosData);
+      if (medicosData.length === 0) {
+        message.info('Nenhum médico encontrado para esta especialidade.');
+      }
     } catch (error) {
-      console.error('❌ Erro ao buscar médicos por especialidade:', error);
-      console.log('⚠️ Usando filtro local como fallback');
-      
-      // Fallback: filtrar localmente dos médicos já carregados
-      const medicosLocais = medicos.filter(m => 
-        (m.cargo || m.especialidade) === especialidade
-      );
-      console.log('📋 Médicos locais da especialidade (fallback):', {
-        total: medicosLocais.length,
-        medicos: medicosLocais.map(m => ({
-          id: m.id,
-          nome: m.name || m.nome,
-          especialidade: m.cargo || m.especialidade
-        }))
-      });
-      setMedicosFiltrados(medicosLocais);
-      
-      if (medicosLocais.length === 0) {
-        message.error('Nenhum médico encontrado para esta especialidade');
-      }
+      setMedicosFiltrados([]);
+      message.error(error.response?.data?.message || 'Nenhum médico encontrado para esta especialidade');
     } finally {
       setLoadingMedicosFiltrados(false);
     }
@@ -444,34 +404,45 @@ const Consultorio = () => {
     });
   }, [consultasPendentesAPI, user]);
 
-  const pacientesPendentesFiltered = useMemo(() => {
+  const getDataConsultaPaciente = useCallback((paciente) => {
+    const data = paciente?.dataConsulta || paciente?.data_consulta_local || paciente?.data_consulta || paciente?.data_agendamento || paciente?.created_at;
+    return data ? moment(data) : null;
+  }, []);
+
+  const isConsultaDeHoje = useCallback((paciente) => {
+    const data = getDataConsultaPaciente(paciente);
+    return !data || data.isSame(moment(), 'day');
+  }, [getDataConsultaPaciente]);
+
+  const isConsultaAtrasada = useCallback((paciente) => {
+    const data = getDataConsultaPaciente(paciente);
+    return Boolean(data && data.isBefore(moment(), 'day'));
+  }, [getDataConsultaPaciente]);
+
+  const pacientesPendentesConsultaFiltered = useMemo(() => {
     // IDs e NIDs dos pacientes que têm exames realizados e aguardam consulta de retorno
     const idsComExames = new Set();
     pacientesComExames.forEach(p => {
-      // Adicionar todos os possíveis identificadores
       if (p.id) idsComExames.add(p.id);
       if (p.pacienteId) idsComExames.add(p.pacienteId);
       if (p.nid) idsComExames.add(p.nid);
     });
 
-    // Retornar apenas pacientes que NÃO estão na lista de retorno com exames
-    // e aplicar filtro de busca
     return consultasPendentesFiltradas
+      .filter(p => p.nid || p.nome || p.apelido || p.nomeCompleto)
       .filter(p => {
-        // Verificar também pelo NID se paciente tem exames pendentes
         const temExames = 
           idsComExames.has(p.id) || 
           idsComExames.has(p.pacienteId) || 
           (p.nid && idsComExames.has(p.nid));
-        
-        // NOVO: Excluir pacientes transferidos para especialidade
+
         const foiTransferidoEspecialidade = 
           p.status === 'transferido_especialidade' ||
           p.status === 'aguardando_pagamento_especialidade' ||
           p.transferido_especialidade === true;
-          
-        // Excluir pacientes com exames, aguardando exames ou transferidos para especialidade
-        return !temExames && !p.aguardandoExames && !foiTransferidoEspecialidade;
+
+        const consultaJaTerminada = isOutOfConsultationQueue(p);
+        return !temExames && !p.aguardandoExames && !foiTransferidoEspecialidade && !consultaJaTerminada;
       })
       .filter(p => {
         if (!searchPendentes) return true;
@@ -483,12 +454,52 @@ const Consultorio = () => {
         );
       })
       .sort((a, b) => {
-        // Ordenar por data de agendamento/cadastro (mais antigos primeiro)
-        const dateA = a.dataConsulta ? new Date(a.dataConsulta) : (a.dataCadastro ? new Date(a.dataCadastro) : new Date(0));
-        const dateB = b.dataConsulta ? new Date(b.dataConsulta) : (b.dataCadastro ? new Date(b.dataCadastro) : new Date(0));
+        const dateA = getDataConsultaPaciente(a)?.toDate() || new Date(0);
+        const dateB = getDataConsultaPaciente(b)?.toDate() || new Date(0);
         return dateA - dateB;
       });
-  }, [consultasPendentesFiltradas, pacientesComExames, searchPendentes]);
+  }, [consultasPendentesFiltradas, pacientesComExames, searchPendentes, getDataConsultaPaciente]);
+
+  const pacientesAguardandoHojeFiltered = useMemo(
+    () => pacientesPendentesConsultaFiltered.filter(isConsultaDeHoje),
+    [pacientesPendentesConsultaFiltered, isConsultaDeHoje]
+  );
+
+  const pacientesPendentesAntigosFiltered = useMemo(
+    () => pacientesPendentesConsultaFiltered.filter(isConsultaAtrasada),
+    [pacientesPendentesConsultaFiltered, isConsultaAtrasada]
+  );
+
+  const consultasRealizadasFiltradas = useMemo(() => {
+    return (consultasRealizadas || [])
+      .map(consulta => ({
+        ...consulta,
+        id: consulta.id || consulta.consulta_id || consulta.consultaId || consulta.agendamento_id || consulta.agendamentoId,
+        consulta_id: consulta.consulta_id || consulta.consultaId || consulta.id,
+        agendamento_id: consulta.agendamento_id || consulta.agendamentoId,
+        nome: consulta.nome || consulta.paciente?.nome || consulta.paciente_nome || '',
+        apelido: consulta.apelido || consulta.paciente?.apelido || '',
+        nomeCompleto: consulta.nomeCompleto || consulta.nome_completo || consulta.paciente?.nomeCompleto || consulta.paciente?.nome_completo || '',
+        dataConsulta: consulta.dataConsulta || consulta.data_consulta || consulta.data_hora_fim || consulta.updated_at || consulta.created_at,
+        diagnostico: consulta.diagnostico || consulta.hipotese_diagnostica || consulta.motivo_consulta || '',
+        tipoConsulta: consulta.tipoConsulta || consulta.tipo_consulta || '',
+      }))
+      .filter(consulta => {
+        if (!searchHistorico) return true;
+        const searchLower = searchHistorico.toLowerCase();
+        return (
+          consulta.nome?.toLowerCase().includes(searchLower) ||
+          consulta.apelido?.toLowerCase().includes(searchLower) ||
+          consulta.nomeCompleto?.toLowerCase().includes(searchLower) ||
+          consulta.nid?.toString().includes(searchLower)
+        );
+      })
+      .sort((a, b) => {
+        const dateA = a.dataConsulta ? new Date(a.dataConsulta) : new Date(0);
+        const dateB = b.dataConsulta ? new Date(b.dataConsulta) : new Date(0);
+        return dateB - dateA;
+      });
+  }, [consultasRealizadas, searchHistorico]);
 
   // Função para abrir a modal de consulta detalhada
   const abrirConsultaDetalhada = (paciente) => {
@@ -504,35 +515,7 @@ const Consultorio = () => {
     setPacienteSelecionado(pacienteParaConsulta);
     setIsConsultaDetalhadaModalVisible(true);
   };
-  // Função para abrir a modal de consulta com exames já realizados
-  const abrirExamesModal = (paciente) => {
-    // Verificar se o paciente tem resultados de exames
-    if (paciente && paciente.resultadosExames) {
-      // CORREÇÃO: Garantir que o paciente está marcado como retorno com exames
-      // e que o NID está preservado
-      const pacienteComRetorno = {
-        ...paciente,
-        retornoComExames: true,
-        nid: paciente.nid, // Garantir que o NID é preservado
-        exameId: paciente.exameId || paciente.id, // Preservar o ID do exame
-        dataExamesConsulta: new Date().toLocaleString() // Registrar quando os exames foram consultados
-      };
-      
-      setPacienteSelecionado(pacienteComRetorno);
-      setExamesAnteriores([
-        {
-          id: paciente.exameId || paciente.id,
-          resultados: normalizarExames(paciente.resultadosExames),
-          data: paciente.dataExames
-        }
-      ]);
-      setMedicamentos([]);
-      setExames([]);
-      setIsExamesModalVisible(true);
-    } else {
-      message.warning('Este paciente não possui resultados de exames disponíveis');
-    }
-  };
+
 
   // Função para abrir somente os detalhes dos exames
   const abrirDetalhesExames = (paciente) => {
@@ -553,84 +536,9 @@ const Consultorio = () => {
     }
   };
 
-  // Handlers para o ConsultaDetalhadaModal
-  const handleFinishConsultaDetalhada = async (values) => {
-    try {
-      // Preparar dados para envio ao backend
-      const consultaData = {
-        paciente_id: pacienteSelecionado.paciente_id || pacienteSelecionado.id || pacienteSelecionado.pacienteId,
-        medico_id: medicoId,
-        status: 'finalizada',
-        historico: values.historico || '',
-        queixa_principal: values.sintomas || values.queixa_principal || '',
-        diagnostico: values.diagnostico || '',
-        recomendacoes: values.recomendacoes || '',
-        especialidade: pacienteSelecionado.especialidade || '',
-        exames: values.exames || [],
-        prescricoes: values.prescricoes || [],
-      };
 
-      // Enviar para o backend
-      const consultaId = pacienteSelecionado?.consulta_id || pacienteSelecionado?.agendamento_id || pacienteSelecionado?.consultaId || pacienteSelecionado?.id;
-      await finalizarConsulta(consultaId, consultaData);
-
-      // Atualizar listas
-      await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas()
-      ]);
-
-      message.success('Consulta realizada com sucesso!');
-
-      setIsConsultaDetalhadaModalVisible(false);
-      // Mudar para a tab de consultas realizadas após completar
-      setActiveTab('2');
-    } catch (error) {
-      console.error('Erro ao finalizar consulta:', error);
-      message.error('Erro ao finalizar consulta. Tente novamente.');
-    }
-  };
 
   // Função para finalizar consulta rapidamente (sem abrir modal)
-  // const handleFinalizarConsultaRapida = async (paciente) => {
-  //   try {
-  //     console.log('🔄 Finalizando consulta rapidamente para:', paciente);
-      
-  //     const consultaId = paciente?.consulta_id || paciente?.agendamento_id || paciente?.id;
-      
-  //     if (!consultaId) {
-  //       message.error('ID da consulta não encontrado');
-  //       return;
-  //     }
-
-  //     // Preparar dados mínimos para finalização
-  //     const consultaData = {
-  //       paciente_id: paciente.paciente_id || paciente.id,
-  //       medico_id: medicoId,
-  //       status: 'finalizada',
-  //       diagnostico: 'Consulta finalizada',
-  //       recomendacoes: 'Acompanhamento conforme necessário',
-  //       especialidade: paciente.especialidade,
-  //     };
-
-  //     console.log('📦 Enviando finalização para consulta ID:', consultaId);
-      
-  //     await finalizarConsulta(consultaId, consultaData);
-
-  //     // Atualizar listas
-  //     await Promise.all([
-  //       fetchConsultasPendentes(),
-  //       fetchConsultasRealizadas()
-  //     ]);
-
-  //     message.success(`Consulta de ${paciente.nome} finalizada com sucesso!`);
-  //     setActiveTab('2'); // Mudar para tab de realizadas
-  //   } catch (error) {
-  //     console.error('❌ Erro ao finalizar consulta:', error);
-  //     message.error('Erro ao finalizar consulta. Tente novamente.');
-  //   }
-  // };
-
   // Função para resetar paciente foi REMOVIDA
   // Reset agora é controlado centralmente pelo CadastroPaciente.jsx
 
@@ -646,29 +554,6 @@ const Consultorio = () => {
       return;
     }
 
-    // Otherwise, create the finalized consultation object with all data
-    const consultaFinalizada = {
-      ...pacienteSelecionado,
-      historico: values.historico,
-      sintomas: values.sintomas,
-      diagnostico: values.diagnostico,
-      recomendacoes: values.recomendacoes,
-      dataConsulta: new Date().toLocaleString(),
-      status: 'alta',
-      // Include prescription and exam data if present
-      exames: values.exames || [],
-      prescricoes: values.prescricoes || [],
-      dataAlta: values.dataAlta || new Date().toLocaleString(),
-      // Indicar se houve prescrição para habilitar consulta de acompanhamento
-      temPrescricao: values.prescricoes && values.prescricoes.length > 0,
-      // Data limite para consulta de acompanhamento (7 dias após alta)
-      dataLimiteAcompanhamento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString(),
-      // Nova lógica: Alta SEMPRE finaliza a consulta E termina o ciclo
-      deveFinalizarConsulta: true,
-      deveTerminarCiclo: true,
-      tipoFinalizacao: 'alta_com_prescricao'
-    };
-
     // Registrar alta no backend
     const consultaId = pacienteSelecionado?.consultaId || pacienteSelecionado?.id;
     registrarAlta(consultaId, {
@@ -681,7 +566,7 @@ const Consultorio = () => {
       fetchConsultasPendentes();
       fetchConsultasRealizadas();
     }).catch(error => {
-      console.error('Erro ao registrar alta:', error);
+      message.error(obterMensagemErro(error, 'Erro ao registrar alta'));
     });
 
     // REMOVIDO: Reset será feito automaticamente pelo CadastroPaciente.jsx ao detectar consulta finalizada
@@ -720,84 +605,130 @@ const Consultorio = () => {
       setIsConsultaDetalhadaModalVisible(false);
       setActiveTab('2');
     } catch (error) {
-      console.error('Erro ao registrar óbito:', error);
-      message.error('Erro ao registrar óbito');
+      message.error(obterMensagemErro(error, 'Erro ao registrar óbito'));
     }
   };
 
   const handleTransferenciaPaciente = async (values) => {
     try {
-      const consultaId = pacienteSelecionado?.consultaId || pacienteSelecionado?.id;
-      // Enviar transferência para o backend
-      await transferirMedico(consultaId, {
-        hospital_destino: values.hospitalDestino === 'Outro' ? values.outroHospital : values.hospitalDestino,
-        motivo: values.motivoTransferencia || '',
-        observacoes: values.observacoes || '',
-      });
+      const { agendamentoId, consultaId } = obterIdsConsultaSelecionada(values);
+      const consultaIdReal = pacienteSelecionado?.consulta_id || pacienteSelecionado?.consultaId || values.consulta_id;
+      const hospitalDestino = values.hospitalDestino === 'Outro' ? values.outroHospital : values.hospitalDestino;
 
-      // Atualizar listas
+      if (!consultaIdReal && !agendamentoId) {
+        message.warning('Não foi possível identificar a consulta para transferência. Atualize a lista e tente novamente.');
+        return;
+      }
+
+      const motivoTransferencia = String(values.motivoTransferencia || values.motivo || '').trim();
+      const sumarioClinico = String(
+        values.sumarioClinico ||
+        pacienteSelecionado?.diagnostico ||
+        pacienteSelecionado?.motivoConsulta ||
+        pacienteSelecionado?.motivo_consulta ||
+        motivoTransferencia
+      ).trim();
+
+      const payload = {
+        tipo_transferencia: 'entre_hospitais',
+        hospital_destino: hospitalDestino,
+        destino: hospitalDestino,
+        motivo_transferencia: motivoTransferencia,
+        motivo: motivoTransferencia,
+        sumario_clinico: sumarioClinico || motivoTransferencia,
+        observacoes: values.observacoes || '',
+        paciente_id: pacienteSelecionado?.paciente_id || pacienteSelecionado?.pacienteId,
+        paciente_nome: pacienteSelecionado?.nomeCompleto || [pacienteSelecionado?.nome, pacienteSelecionado?.apelido].filter(Boolean).join(' '),
+        consulta_id: consultaIdReal || consultaId,
+        agendamento_id: agendamentoId,
+        medico_origem_id: pacienteSelecionado?.medico_id || pacienteSelecionado?.medicoId || medicoId,
+        medico_origem_nome: pacienteSelecionado?.medico || user?.name || user?.nome,
+        nid: pacienteSelecionado?.nid,
+        status: 'solicitada',
+      };
+
+      await criarTransferencia(payload);
+
       await Promise.all([
         fetchConsultasPendentes(),
         fetchConsultasRealizadas()
       ]);
 
-      message.success('Paciente transferido com sucesso');
+      message.success('Transferência do paciente registada com sucesso');
       setIsConsultaDetalhadaModalVisible(false);
       setActiveTab('2');
     } catch (error) {
-      console.error('Erro ao transferir paciente:', error);
-      message.error('Erro ao transferir paciente');
+      message.error(obterMensagemErro(error, 'Erro ao transferir paciente'));
     }
   };
 
-  const handleVerHistoricoPaciente = () => {
-    // Implementar a lógica para visualizar o histórico do paciente
-    message.info('Visualizando histórico do paciente...');
-    // Aqui você poderia abrir uma nova modal com o histórico ou redirecionar para uma página específica
-  };
+
+
+  const obterMensagemErro = useCallback((error, fallback) => {
+    const errors = error?.response?.data?.errors;
+    if (errors && typeof errors === 'object') {
+      const detalhes = Object.values(errors).flat().filter(Boolean).join('; ');
+      if (detalhes) return detalhes;
+    }
+
+    return error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
+  }, []);
 
   // Função para transferir paciente para outro médico
   const handleTransferirParaMedico = async (values) => {
     try {
-      const medicoSelecionado = medicosFiltrados.find(m => m.id === values.medicoId);
+      const medicoSelecionado = medicosFiltrados.find(m => String(m.id) === String(values.medicoId));
 
       if (!medicoSelecionado) {
         message.error('Médico selecionado não encontrado');
         return;
       }
 
-      // Validar que temos o consulta_id
-      if (!pacienteSelecionado?.consulta_id) {
-        message.error('Paciente não possui consulta_id válido');
-        console.error('❌ Paciente sem consulta_id:', pacienteSelecionado);
+      const statusConsulta = String(pacienteSelecionado?.status || '').toLowerCase();
+      if (['finalizada', 'concluida', 'concluída', 'cancelada'].includes(statusConsulta)) {
+        message.warning('Esta consulta já foi encerrada e não pode ser transferida para outro médico.');
         return;
       }
 
-      // Usar consulta_id (ID numérico correto)
-      const consultaId = Number(pacienteSelecionado.consulta_id);
-      
-      // Validar que o ID é numérico válido
+      const consultaId = Number(
+        pacienteSelecionado?.consulta_id ||
+        pacienteSelecionado?.consultaId ||
+        pacienteSelecionado?.agendamento_id ||
+        pacienteSelecionado?.agendamentoId ||
+        pacienteSelecionado?.id
+      );
+
       if (!Number.isInteger(consultaId) || consultaId <= 0) {
-        message.error(`ID inválido: ${pacienteSelecionado.consulta_id}`);
+        message.error('Não foi possível identificar a consulta para transferência. Atualize a lista e tente novamente.');
         return;
       }
-      
-      // Preparar payload completo
+
+      const medicoAtualId = Number(pacienteSelecionado.medico_id || pacienteSelecionado.medicoId || medicoId || 0);
+      const medicoDestinoId = Number(values.medicoId || medicoSelecionado.id);
+      if (medicoAtualId && medicoAtualId === medicoDestinoId) {
+        message.warning('Selecione um médico diferente do médico atual.');
+        return;
+      }
+
+      const motivo = String(values.motivo || '').trim();
+      if (motivo.length < 5) {
+        message.warning('Descreva melhor o motivo da transferência.');
+        return;
+      }
+
+      const medicoNome = medicoSelecionado.name || medicoSelecionado.nome || medicoSelecionado.apelido || `Médico ID: ${medicoDestinoId}`;
       const payload = {
-        medico_destino_id: medicoSelecionado.id,
+        medico_destino_id: medicoDestinoId,
+        medico_destino: medicoDestinoId,
+        novo_medico_id: medicoDestinoId,
+        novo_medico: medicoNome,
+        novo_medico_nome: medicoNome,
         paciente_id: pacienteSelecionado.paciente_id || pacienteSelecionado.pacienteId,
         medico_origem_id: pacienteSelecionado.medico_id || pacienteSelecionado.medicoId,
         nid: pacienteSelecionado.nid,
-        motivo: values.motivo,
-        observacoes: values.observacoes
+        motivo,
+        observacoes: values.observacoes || null
       };
-
-      console.log('🔍 DEBUG Transferir Médico:', {
-        pacienteSelecionado,
-        consultaId,
-        payload,
-        url: `/consultas/${consultaId}/transferir-medico`
-      });
 
       // Enviar transferência para o backend
       await transferirMedico(consultaId, payload);
@@ -805,118 +736,58 @@ const Consultorio = () => {
       // Atualizar lista da API após transferir médico
       await fetchConsultasPendentes();
 
-      const medicoNome = medicoSelecionado.name || medicoSelecionado.nome || medicoSelecionado.apelido || 'Médico';
       message.success(`Paciente transferido para ${medicoNome} com sucesso!`);
       setIsTransferirMedicoModalVisible(false);
       transferirMedicoForm.resetFields();
     } catch (error) {
-      console.error('❌ Erro ao transferir médico:', error);
-      console.error('Response data:', error.response?.data);
-      console.error('Response status:', error.response?.status);
-      
-      const errorMsg = error.response?.data?.message || 
-                       error.response?.data?.errors || 
-                       error.message || 
-                       'Erro ao transferir paciente';
-      message.error(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
+      message.error(obterMensagemErro(error, 'Erro ao transferir paciente'));
     }
   };
 
   // Função para transferir paciente para outra especialidade
   const handleTransferirParaEspecialidade = async (values) => {
     try {
-      // PASSO 1: Atualizar lista de consultas para garantir dados atualizados
-      message.loading('Verificando status da consulta...', 0.5);
-      await fetchConsultasPendentes();
-      
-      // Aguardar um momento para a lista ser atualizada
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const medicoSelecionado = medicos.find(m => m.id === values.medicoId);
+      const medicoSelecionado = medicos.find(m => String(m.id) === String(values.medicoId));
 
       if (!medicoSelecionado) {
         message.error('Médico selecionado não encontrado');
         return;
       }
 
-      // CORREÇÃO: Usar agendamento_id ou consulta_id não finalizada
-      // Prioridade: agendamento_id > consulta_id (não finalizada) > id
-      let consultaId = null;
-      
-      // 1. Tentar usar agendamento_id (nova arquitetura)
-      if (pacienteSelecionado?.agendamento_id) {
-        consultaId = pacienteSelecionado.agendamento_id;
-        console.log('✅ Usando agendamento_id:', consultaId);
-      }
-      // 2. Tentar usar consulta_id se não estiver finalizada
-      else if (pacienteSelecionado?.consulta_id && pacienteSelecionado?.status !== 'finalizada' && pacienteSelecionado?.status !== 'concluida') {
-        consultaId = pacienteSelecionado.consulta_id;
-        console.log('✅ Usando consulta_id (status:', pacienteSelecionado.status, '):', consultaId);
-      }
-      // 3. Tentar consultaId alternativo
-      else if (pacienteSelecionado?.consultaId && pacienteSelecionado?.status !== 'finalizada' && pacienteSelecionado?.status !== 'concluida') {
-        consultaId = pacienteSelecionado.consultaId;
-        console.log('✅ Usando consultaId alternativo (status:', pacienteSelecionado.status, '):', consultaId);
-      }
-      // 4. Último recurso: usar id se não for consulta finalizada
-      else if (pacienteSelecionado?.id && pacienteSelecionado?.status !== 'finalizada' && pacienteSelecionado?.status !== 'concluida') {
-        consultaId = pacienteSelecionado.id;
-        console.log('⚠️ Usando id como fallback (status:', pacienteSelecionado.status, '):', consultaId);
-      }
-      
+      const consultaId = pacienteSelecionado?.consulta_id ||
+        pacienteSelecionado?.consultaId ||
+        pacienteSelecionado?.agendamento_id ||
+        pacienteSelecionado?.agendamentoId ||
+        pacienteSelecionado?.id;
+
       if (!consultaId) {
-        console.error('❌ Nenhum ID válido encontrado para transferência:', {
-          agendamento_id: pacienteSelecionado?.agendamento_id,
-          consulta_id: pacienteSelecionado?.consulta_id,
-          consultaId: pacienteSelecionado?.consultaId,
-          id: pacienteSelecionado?.id,
-          status: pacienteSelecionado?.status
-        });
-        message.error('Não foi possível identificar a consulta/agendamento para transferência. Paciente pode já ter consulta finalizada.');
+        message.error('Não foi possível identificar a consulta/agendamento para transferência. Atualize a lista e tente novamente.');
         return;
       }
 
-      // Preparar payload completo para transferência de especialidade
+      const motivo = String(values.motivo || '').trim();
+      if (motivo.length < 10) {
+        message.warning('Descreva melhor o motivo da transferência, com pelo menos 10 caracteres.');
+        return;
+      }
+
+      const medicoNome = medicoSelecionado.name || medicoSelecionado.nome || medicoSelecionado.apelido || `Médico ID: ${values.medicoId}`;
+      const especialidadeSelecionada = especialidades.find(esp => esp.nome === values.especialidade || String(esp.id) === String(values.especialidade));
+
       const payload = {
-        especialidade_destino: values.especialidade,
-        medico_destino_id: medicoSelecionado.id,
+        especialidade_destino: especialidadeSelecionada?.nome || values.especialidade,
+        especialidade_destino_id: especialidadeSelecionada?.id && !Number.isNaN(Number(especialidadeSelecionada.id)) ? Number(especialidadeSelecionada.id) : undefined,
+        medico_destino_id: Number(values.medicoId),
+        medico_destino: medicoNome,
         medico_origem_id: pacienteSelecionado.medico_id || pacienteSelecionado.medicoId || medicoId,
         paciente_id: pacienteSelecionado.paciente_id || pacienteSelecionado.pacienteId,
+        agendamento_id: pacienteSelecionado.agendamento_id || pacienteSelecionado.agendamentoId,
         nid: pacienteSelecionado.nid,
-        motivo: values.motivo,
-        observacoes: values.observacoes,
+        motivo,
+        observacoes: values.observacoes || null,
       };
 
-      console.log('🔍 DEBUG Transferir Especialidade - PAYLOAD COMPLETO:', {
-        consultaId,
-        tipoId: pacienteSelecionado?.agendamento_id ? 'agendamento_id' : 'consulta_id',
-        payload,
-        pacienteSelecionado: {
-          id: pacienteSelecionado.id,
-          agendamento_id: pacienteSelecionado.agendamento_id,
-          consulta_id: pacienteSelecionado.consulta_id,
-          consultaId: pacienteSelecionado.consultaId,
-          paciente_id: pacienteSelecionado.paciente_id,
-          pacienteId: pacienteSelecionado.pacienteId,
-          medico_id: pacienteSelecionado.medico_id,
-          medicoId: pacienteSelecionado.medicoId,
-          nid: pacienteSelecionado.nid,
-          nome: pacienteSelecionado.nome,
-          especialidade_atual: pacienteSelecionado.especialidade,
-          status: pacienteSelecionado.status
-        },
-        medicoDestino: {
-          id: medicoSelecionado.id,
-          nome: medicoSelecionado.name || medicoSelecionado.nome,
-          especialidade: medicoSelecionado.cargo || medicoSelecionado.especialidade
-        },
-        url: `/consultas/${consultaId}/transferir-especialidade`
-      });
-
-      // Enviar transferência para o backend
       await transferirEspecialidade(consultaId, payload);
-
-      const medicoNome = medicoSelecionado.name || medicoSelecionado.nome || medicoSelecionado.apelido || 'Médico';
       
       // Fechar modal imediatamente
       setIsTransferirEspecialidadeModalVisible(false);
@@ -932,30 +803,111 @@ const Consultorio = () => {
         duration: 3
       });
 
-      // Aguardar um momento para o backend processar
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Atualizar lista da API múltiplas vezes para garantir sincronização
       await fetchConsultasPendentes();
-      
-      // Segunda atualização após delay
-      setTimeout(async () => {
-        await fetchConsultasPendentes();
-        message.info('Lista atualizada! Paciente agora está no CadastroPaciente.jsx na tab "Para Especialidades"');
-      }, 1500);
 
     } catch (error) {
-      console.error('❌ Erro ao transferir para especialidade:', error);
-      console.error('Response data:', error.response?.data);
-      console.error('Response status:', error.response?.status);
-      
-      const errorMsg = error.response?.data?.message || 
-                       error.response?.data?.errors || 
-                       error.message || 
-                       'Erro ao transferir paciente';
-      message.error(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
+      message.error(obterMensagemErro(error, 'Erro ao transferir paciente'));
     }
   };
+
+  const obterIdsConsultaSelecionada = useCallback((values = {}) => {
+    const consultaId = pacienteSelecionado?.consulta_id || pacienteSelecionado?.consultaId || values.consulta_id || values.consultaId;
+    const agendamentoId = pacienteSelecionado?.agendamento_id || pacienteSelecionado?.agendamentoId || values.agendamentoId || values.agendamento_id || (!consultaId ? pacienteSelecionado?.id : null);
+
+    return {
+      agendamentoId,
+      consultaId,
+      idFinalizacao: agendamentoId || consultaId,
+    };
+  }, [pacienteSelecionado]);
+
+  const atualizarListasConsulta = useCallback(async ({ incluirExames = false } = {}) => {
+    await Promise.all([
+      fetchConsultasPendentes({ force: true }),
+      fetchConsultasRealizadas({ force: true }),
+      incluirExames ? fetchPacientesComExames() : Promise.resolve(),
+    ]);
+  }, [fetchConsultasPendentes, fetchConsultasRealizadas, fetchPacientesComExames]);
+
+  const concluirFluxoConsulta = useCallback(async ({
+    mensagem,
+    incluirExames = false,
+    fecharModalDetalhada = true,
+    fecharModalExames = false,
+    irParaRealizadas = true,
+  } = {}) => {
+    await atualizarListasConsulta({ incluirExames });
+
+    if (mensagem) {
+      if (typeof mensagem === 'string') {
+        message.success(mensagem);
+      } else {
+        message.success(mensagem);
+      }
+    }
+
+    if (fecharModalDetalhada) {
+      setIsConsultaDetalhadaModalVisible(false);
+    }
+
+    if (fecharModalExames) {
+      setIsExamesModalVisible(false);
+    }
+
+    if (irParaRealizadas) {
+      setActiveTab('2');
+    }
+  }, [atualizarListasConsulta]);
+
+  const tratarErroFinalizacaoConsulta = useCallback(async (error, mensagemPadrao = 'Erro ao finalizar consulta. Tente novamente.') => {
+    const statusCode = error.response?.status;
+    const serverMessage = error.response?.data?.message || error.response?.data?.error || error.message;
+    const jaFinalizada = statusCode === 409 && /finalizada|finalizado|conclu[ií]da/i.test(serverMessage || '');
+
+    if (jaFinalizada) {
+      await concluirFluxoConsulta({ mensagem: 'Consulta já estava finalizada. A lista foi atualizada.' });
+      return true;
+    }
+
+    message.error(serverMessage || mensagemPadrao);
+    return false;
+  }, [concluirFluxoConsulta]);
+
+  const montarPayloadFinalizacaoConsulta = useCallback((values = {}, extras = {}) => {
+    const { consultaId, idFinalizacao } = obterIdsConsultaSelecionada(values);
+
+    if (!idFinalizacao) {
+      return null;
+    }
+
+    const sintomas = values.sintomas || values.queixaPrincipal || values.queixa_principal || '';
+    const status = extras.status || values.status || 'finalizada';
+
+    return {
+      agendamentoId: idFinalizacao,
+      agendamento_id: idFinalizacao,
+      consulta_id: consultaId,
+      paciente_id: pacienteSelecionado?.paciente_id || pacienteSelecionado?.pacienteId || pacienteSelecionado?.id,
+      medico_id: medicoId,
+      nid: pacienteSelecionado?.nid,
+      historico: values.historico || '',
+      sintomas,
+      queixaPrincipal: sintomas,
+      queixa_principal: sintomas,
+      diagnostico: values.diagnostico || '',
+      recomendacoes: values.recomendacoes || '',
+      especialidade: pacienteSelecionado?.especialidade || '',
+      status,
+      temPrescricao: values.temPrescricao || false,
+      temExames: values.temExames || false,
+      tipoFinalizacao: values.tipoFinalizacao || extras.tipoFinalizacao || 'basica',
+      deveFinalizarConsulta: values.deveFinalizarConsulta !== false,
+      deveTerminarCiclo: values.deveTerminarCiclo !== false,
+      prescricoes: extras.prescricoes ?? values.prescricoes ?? [],
+      exames: extras.exames ?? values.exames ?? [],
+      ...extras.payload,
+    };
+  }, [medicoId, obterIdsConsultaSelecionada, pacienteSelecionado]);
 
   const adicionarMedicamento = () => {
     const nome = form.getFieldValue('novoMedicamento');
@@ -973,91 +925,46 @@ const Consultorio = () => {
     }
   };
 
-  // Função para finalizar consulta com prescrição de medicamentos
-  const handleFinishConsulta = (values) => {
-    
-    // CORREÇÃO: Log de diagnóstico para verificar os dados do paciente
-    
-    // Usar nova lógica baseada nos dados recebidos do modal
-    const deveFinalizarConsulta = values.deveFinalizarConsulta !== false; // Default true para manter compatibilidade
-    const deveTerminarCiclo = values.deveTerminarCiclo !== false; // Nova flag para controle de reset do paciente
+  // Finaliza a consulta principal usando o fluxo único de payload, refresh e mensagens.
+  const handleFinishConsulta = async (values) => {
+    const deveFinalizarConsulta = values.deveFinalizarConsulta !== false;
+    const deveTerminarCiclo = values.deveTerminarCiclo !== false;
     const status = values.status || 'finalizada';
-    
-    const consultaFinalizada = {
-      ...pacienteSelecionado,
-      // CORREÇÃO: Garantir explicitamente que o NID seja preservado
-      nid: pacienteSelecionado?.nid,
-      historico: values.historico,
-      sintomas: values.sintomas,
-      diagnostico: values.diagnostico,
-      recomendacoes: values.recomendacoes,
-      dataConsulta: new Date().toLocaleString(),
-      status: status,
-      // Include any prescription or exam data if present
-      exames: values.exames || [],
-      prescricoes: values.prescricoes || [],
-      temPrescricao: values.temPrescricao || false,
-      temExames: values.temExames || false,
-      tipoFinalizacao: values.tipoFinalizacao || 'basica',
-      // Nova flag para controlar se deve resetar o paciente no CadastroPaciente
-      deveTerminarCiclo: deveTerminarCiclo,
-      // Include data from the original appointment if available
-      especialidade: pacienteSelecionado.especialidade,
-      medico: pacienteSelecionado.medico || pacienteSelecionado.medicoNome
-    };
+    const payload = montarPayloadFinalizacaoConsulta(values, { status });
 
-    // Enviar para o backend
-    const consultaId = pacienteSelecionado?.consulta_id || pacienteSelecionado?.agendamento_id || pacienteSelecionado?.consultaId || pacienteSelecionado?.id;
-    finalizarConsulta(consultaId, {
-      paciente_id: pacienteSelecionado?.paciente_id || pacienteSelecionado?.id || pacienteSelecionado?.pacienteId,
-      medico_id: medicoId,
-      historico: values.historico || '',
-      queixa_principal: values.sintomas || values.queixa_principal || '',
-      diagnostico: values.diagnostico || '',
-      recomendacoes: values.recomendacoes || '',
-      especialidade: pacienteSelecionado?.especialidade || '',
-      prescricoes: consultaFinalizada.prescricoes || [],
-      exames: consultaFinalizada.exames || [],
-      status: status,
-    }).then(() => {
-      // Nova lógica: sempre remove da lista de pendentes quando consulta é finalizada
-      // O controle de "Em Consulta" será feito pelo CadastroPaciente baseado em deveTerminarCiclo
-      if (deveFinalizarConsulta) {
-        // Atualizar listas da API após finalizar consulta
-        fetchConsultasPendentes();
-        fetchConsultasRealizadas();
-      
-      if (deveTerminarCiclo) {
-        // Ciclo terminado - paciente volta ao estado inicial
-        if (status === 'finalizada') {
-          if (values.temPrescricao) {
-            message.success('Consulta finalizada com prescrição médica - ciclo terminado!');
-          } else {
-            message.success('Consulta realizada com sucesso - ciclo terminado!');
-          }
-        } else {
-          message.success(`Consulta ${status === 'aguardando_prescricao' ? 'salva - aguardando prescrição' : 'finalizada'}!`);
-        }
-      } else {
-        // Consulta finalizada mas ciclo não terminado (só exames)
+    if (!payload) {
+      message.error('Não foi possível identificar a consulta/agendamento para finalizar. Atualize a lista e tente novamente.');
+      return;
+    }
+
+    try {
+      await finalizarConsulta(payload.agendamentoId, payload);
+
+      if (!deveFinalizarConsulta) {
+        message.info('Consulta em processamento.');
+        setIsConsultaDetalhadaModalVisible(false);
+        return;
+      }
+
+      if (!deveTerminarCiclo) {
         message.info({
           content: 'Exames solicitados - paciente removido desta lista mas permanece em consulta para futuras prescrições!',
-          duration: 6
+          duration: 6,
         });
-      }
-      
-        // Mudar para a tab de consultas realizadas após completar
-        setActiveTab('2');
-      } else {
-        // Esta condição não deveria mais ocorrer com a nova lógica
-        message.info('Consulta em processamento.');
+        await concluirFluxoConsulta({ mensagem: null, incluirExames: true });
+        return;
       }
 
-      setIsConsultaDetalhadaModalVisible(false);
-    }).catch(error => {
-      console.error('Erro ao finalizar consulta:', error);
-      message.error('Erro ao finalizar consulta. Tente novamente.');
-    });
+      const mensagemSucesso = status === 'finalizada'
+        ? (values.temPrescricao
+          ? 'Consulta finalizada com prescrição médica - ciclo terminado!'
+          : 'Consulta realizada com sucesso - ciclo terminado!')
+        : `Consulta ${status === 'aguardando_prescricao' ? 'salva - aguardando prescrição' : 'finalizada'}!`;
+
+      await concluirFluxoConsulta({ mensagem: mensagemSucesso, incluirExames: Boolean(values.temExames) });
+    } catch (error) {
+      await tratarErroFinalizacaoConsulta(error);
+    }
   };
 
   // Função para solicitar apenas exames (sem finalizar consulta)
@@ -1084,64 +991,55 @@ const Consultorio = () => {
       // Atualizar lista da API após solicitar exames
       await fetchConsultasPendentes();
     } catch (error) {
-      console.error('Erro ao solicitar exames:', error);
       message.error('Erro ao solicitar exames');
     }
   };
 
   const handleFinishConsultaComExames = async (values) => {
-    try {
-      // Preparar dados para envio ao backend
-      const consultaData = {
-        paciente_id: pacienteSelecionado?.paciente_id || pacienteSelecionado?.id || pacienteSelecionado?.pacienteId,
-        medico_id: medicoId,
-        status: 'finalizada',
-        diagnostico: values.diagnostico || '',
-        recomendacoes: values.recomendacoes || '',
-        especialidade: pacienteSelecionado?.especialidade || '',
-        prescricoes: medicamentos.map(med => ({
-          medicamento: med,
-          tipo: 'prescricao'
-        })),
-        exames_anteriores: pacienteSelecionado.resultadosExames || {},
-      };
+    const examesSolicitados = exames.map(exame => ({
+      nome: exame,
+      tipo_exame: exame,
+      prioridade: 'normal',
+      status: 'solicitado',
+    }));
 
-      // Se houver novos exames solicitados, adicionar
-      if (exames.length > 0) {
-        consultaData.exames = exames.map(exame => ({
-          tipo_exame: exame,
-          prioridade: 'normal',
-          status: 'solicitado'
-        }));
-      }
+    const payload = montarPayloadFinalizacaoConsulta(values, {
+      status: 'finalizada',
+      tipoFinalizacao: 'retorno_exames',
+      prescricoes: medicamentos.map(med => ({
+        medicamento: med,
+        tipo: 'prescricao',
+      })),
+      exames: examesSolicitados,
+      payload: {
+        exames_anteriores: pacienteSelecionado?.resultadosExames || {},
+      },
+    });
 
-      // Finalizar consulta no backend
-      const consultaId = pacienteSelecionado?.consulta_id || pacienteSelecionado?.agendamento_id || pacienteSelecionado?.consultaId || pacienteSelecionado?.id;
-      await finalizarConsulta(consultaId, consultaData);
-
-      // Atualizar listas
-      await Promise.all([
-        fetchConsultasPendentes(),
-        fetchConsultasRealizadas(),
-        exames.length > 0 ? fetchPacientesComExames() : Promise.resolve()
-      ]);
-
-      message.success({
-        content: 'Consulta de retorno com exames realizada com sucesso!',
-        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
-      });
-
-      setIsExamesModalVisible(false);
-      // Mudar para a tab de consultas realizadas após completar
-      setActiveTab('2');
-    } catch (error) {
-      console.error('Erro ao finalizar consulta com exames:', error);
-      message.error('Erro ao finalizar consulta');
+    if (!payload) {
+      message.error('Não foi possível identificar a consulta/agendamento para finalizar. Atualize a lista e tente novamente.');
+      return;
     }
-  };  // Função para imprimir o histórico do paciente
+
+    try {
+      await finalizarConsulta(payload.agendamentoId, payload);
+
+      await concluirFluxoConsulta({
+        mensagem: {
+          content: 'Consulta de retorno com exames realizada com sucesso!',
+          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+        },
+        incluirExames: examesSolicitados.length > 0,
+        fecharModalDetalhada: false,
+        fecharModalExames: true,
+      });
+    } catch (error) {
+      await tratarErroFinalizacaoConsulta(error, 'Erro ao finalizar consulta');
+    }
+  };
+
+  // Função para imprimir o histórico do paciente
   const imprimirHistorico = (paciente) => {
-    console.log('Imprimindo histórico para paciente:', paciente);
-    
     // Criar uma nova janela para impressão
     const printWindow = window.open('', '_blank');
     
@@ -1158,8 +1056,6 @@ const Consultorio = () => {
         []
     };
     
-    console.log('Paciente com todas as prescrições para impressão:', pacienteAtualizado);
-
     // Criar as seções de exames, se existirem
     let examesHTML = '';
     if (pacienteAtualizado.exames && pacienteAtualizado.exames.length > 0) {
@@ -1646,17 +1542,8 @@ const Consultorio = () => {
       title: 'Status',
       key: 'status',
       render: (_, record) => {
-        if (record.status === 'transferido_medico') {
-          return <Tag color="purple">Transferido para outro médico</Tag>;
-        } else if (record.status === 'transferido_especialidade') {
-          return <Tag color="magenta">Transferido para outra especialidade</Tag>;
-        } else if (record.status === 'aguardando_prescricao') {
-          return <Tag color="cyan">Aguardando prescrições</Tag>;
-        } else if (record.aguardandoExames) {
-          return <Tag color="orange">Aguardando realização de exames</Tag>;
-        } else {
-          return <Tag color="blue">Aguardando consulta</Tag>;
-        }
+        const workflow = getWorkflowStatus(record);
+        return <Tag color={workflow.color}>{workflow.label}</Tag>;
       }
     },
     {
@@ -1688,23 +1575,11 @@ const Consultorio = () => {
           >
             Consulta
           </Button>
-          {/* <Button
-            type="primary"
-            icon={<CheckCircleOutlined />}
-            onClick={() => handleFinalizarConsultaRapida(record)}
-            size="small"
-            style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
-          >
-            Finalizar
-          </Button> */}
           <Space size="small">
             <Button
               type="default"
               icon={<SwapOutlined />}
               onClick={() => {
-                console.log('🔍 Abrindo modal de transferir médico');
-                console.log('📊 Paciente selecionado:', record);
-                console.log('📋 Especialidade do paciente:', record.especialidade);
                 setPacienteSelecionado(record);
                 setIsTransferirMedicoModalVisible(true);
                 // Buscar médicos da mesma especialidade
@@ -1809,7 +1684,7 @@ const Consultorio = () => {
   // Estados para gerenciar os modais e dados de prescrições
   const [isPrescricoesModalVisible, setIsPrescricoesModalVisible] = useState(false);
   const [prescricoesSelecionadas, setPrescricoesSelecionadas] = useState([]);
-  const [historiaTab, setHistoriaTab] = useState('exames');
+  const [historiaTab, setHistoriaTab] = useState('todas');
   const [novoPrescricaoForm] = Form.useForm();
   const [numeroDosesDiarias, setNumeroDosesDiarias] = useState(1);
   
@@ -1886,8 +1761,6 @@ const Consultorio = () => {
           horarios
         } = values;
         
-        console.log("Form values:", values);
-
         if (!medicamento) {
           message.error("Nome do medicamento é obrigatório");
           return;
@@ -1938,8 +1811,7 @@ const Consultorio = () => {
           
           // Juntar todos os horários em uma string
           horariosFormatados = horariosList.join(', ');
-        } catch (error) {
-          console.error('Erro ao formatar horário:', error);
+        } catch {
           horariosFormatados = "12h00";
           horariosList = ["12:00"];
         }
@@ -1971,8 +1843,7 @@ const Consultorio = () => {
         setNumeroDosesDiarias(1);
         message.success('Prescrição adicionada com sucesso');
       })
-      .catch(error => {
-        console.error("Erro ao validar formulário:", error);
+      .catch(() => {
         message.error("Erro ao adicionar prescrição. Verifique os campos obrigatórios.");
       });
   };
@@ -2090,8 +1961,7 @@ const Consultorio = () => {
           
           // Juntar todos os horários em uma string
           horariosFormatados = horariosList.join(', ');
-        } catch (error) {
-          console.error('Erro ao formatar horário:', error);
+        } catch {
           horariosFormatados = "12h00";
           horariosList = ["12:00"];
         }
@@ -2131,8 +2001,7 @@ const Consultorio = () => {
         setNumeroDosesDiarias(1);
         message.success('Prescrição atualizada com sucesso');
       })
-      .catch(error => {
-        console.error("Erro ao validar formulário:", error);
+      .catch(() => {
         message.error("Erro ao atualizar prescrição. Verifique os campos obrigatórios.");
       });
   };
@@ -2298,6 +2167,72 @@ const Consultorio = () => {
     printWindow.document.close();
   };
 
+  const columnsRealizadas = [
+    { title: 'NID', dataIndex: 'nid', key: 'nid' },
+    {
+      title: 'Paciente',
+      key: 'paciente',
+      render: (_, record) => {
+        const nomeCompleto = record.nomeCompleto || [record.nome, record.apelido].filter(Boolean).join(' ');
+        return nomeCompleto || 'Não informado';
+      }
+    },
+    {
+      title: 'Data',
+      dataIndex: 'dataConsulta',
+      key: 'dataConsulta',
+      render: (text) => text ? new Date(text).toLocaleDateString('pt-BR') : 'N/A'
+    },
+    {
+      title: 'Médico/Especialidade',
+      key: 'medicoEspecialidade',
+      render: (_, record) => (
+        <div>
+          <div><strong>{record.medico || 'Não informado'}</strong></div>
+          <Text type="secondary">{record.especialidade || record.tipoConsulta || 'Não informado'}</Text>
+        </div>
+      )
+    },
+    {
+      title: 'Diagnóstico',
+      dataIndex: 'diagnostico',
+      key: 'diagnostico',
+      render: (text) => text || 'Não informado'
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => <Tag color="green">{status || 'finalizada'}</Tag>
+    },
+    {
+      title: 'Ações',
+      key: 'acoes',
+      render: (_, record) => (
+        <Space>
+          <Button
+            icon={<EyeOutlined />}
+            onClick={() => {
+              setPacienteSelecionado(record);
+              abrirPrescricoesModal(record.prescricoes);
+            }}
+            disabled={!record.prescricoes?.length}
+          >
+            Prescrições
+          </Button>
+          <Button
+            type="primary"
+            icon={<PrinterOutlined />}
+            onClick={() => imprimirHistorico(record)}
+            style={{ background: '#722ed1' }}
+          >
+            Histórico
+          </Button>
+        </Space>
+      )
+    }
+  ];
+
   // Colunas para a aba de exames no histórico
   const columnsExames = [
     { title: 'Nome', dataIndex: 'nome', key: 'nome' },
@@ -2409,126 +2344,7 @@ const Consultorio = () => {
     }
   ];
 
-  const columnsRealizadas = [
-    { title: 'Nome', dataIndex: 'nome', key: 'nome' },
-    { title: 'Diagnóstico', dataIndex: 'diagnostico', key: 'diagnostico' },
-    {
-      title: 'Recomendações',
-      dataIndex: 'recomendacoes',
-      key: 'recomendacoes',
-      render: (text) => text || 'Nenhuma recomendação'
-    },
-    {
-      title: 'Dados Associados',
-      key: 'dadosAssociados',
-      render: (_, record) => (
-        <Space direction="vertical" size="small">
-          {record.prescricoes?.length > 0 && (
-            <Tag color="blue" icon={<MedicineBoxOutlined />}>
-              {record.prescricoes.length} Prescrição(ões)
-            </Tag>
-          )}
-          {record.exames?.length > 0 && (
-            <Tag color="purple" icon={<ExperimentOutlined />}>
-              {record.exames.length} Exame(s)
-            </Tag>
-          )}
-          {(!record.prescricoes?.length && !record.exames?.length) && (
-            <Text type="secondary">Nenhum</Text>
-          )}
-        </Space>
-      )
-    }, {
-      title: 'Data da Consulta',
-      dataIndex: 'dataConsulta',
-      key: 'dataConsulta',
-      defaultSortOrder: 'ascend',
-      sorter: (a, b) => {
-        const dateA = a.dataConsulta ? new Date(a.dataConsulta) : new Date(0);
-        const dateB = b.dataConsulta ? new Date(b.dataConsulta) : new Date(0);
-        return dateA - dateB;
-      },
-      render: (text) => {
-        if (!text) return 'N/A';
-        // Formatar data para exibição amigável
-        const date = new Date(text);
-        return date.toLocaleString('pt-BR');
-      }
-    },
-    {
-      title: 'Status',
-      key: 'status', dataIndex: 'status',
-      render: (status) => {
-        let color = 'blue';
-        let text = 'Finalizada';
 
-        if (status === 'alta') {
-          color = 'green';
-          text = 'Alta';
-        } else if (status === 'obito') {
-          color = 'red';
-          text = 'Óbito';
-        } else if (status === 'transferido') {
-          color = 'purple';
-          text = 'Transferido';
-        }
-
-        return <Tag color={color}>{text}</Tag>;
-      }
-    },
-    {
-      title: 'Ações',
-      key: 'acoes',                           
-      render: (_, record) => (
-        <Space>
-          <Button
-            icon={<EyeOutlined />}
-            onClick={() => {
-              // Definir paciente selecionado para garantir que o NID esteja disponível
-              setPacienteSelecionado(record);
-              abrirPrescricoesModal(record.prescricoes);
-            }}
-            disabled={!record.prescricoes?.length}
-          >
-            Ver Prescrições
-          </Button>
-          <Button
-            type="primary"
-            icon={<PrinterOutlined />}
-            onClick={() => {
-              console.log("Botão Imprimir Histórico clicado para:", record);
-              
-              // Definir paciente selecionado para garantir que o NID esteja disponível
-              setPacienteSelecionado(record);
-              
-              // Criar uma nova cópia do paciente para não modificar o original
-              const pacienteAtualizado = { ...record };
-              
-              // Garantir que temos o NID
-              if (!pacienteAtualizado.nid) {
-                console.warn("Paciente sem NID! Tentando encontrar em outras fontes...");
-                // Tentar encontrar o paciente por ID nas listas de consultas
-                const pacienteComNID = [...consultasPendentesAPI, ...consultasRealizadas]
-                  .find(p => p.id === record.id && p.nid);
-                  
-                if (pacienteComNID && pacienteComNID.nid) {
-                  console.log("NID encontrado:", pacienteComNID.nid);
-                  pacienteAtualizado.nid = pacienteComNID.nid;
-                }
-              }
-              
-              // Passar diretamente o paciente atualizado para a função imprimir histórico
-              // A função imprimirHistorico já foi modificada para buscar todas as prescrições
-              imprimirHistorico(pacienteAtualizado);
-            }}
-            style={{ background: '#722ed1' }}
-          >
-            Imprimir Histórico
-          </Button>
-        </Space>
-      )
-    }
-  ];
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', background: '#f5f5f5' }}>
@@ -2551,7 +2367,7 @@ const Consultorio = () => {
               <span>
                 <MedicineBoxOutlined />
                 Pacientes Aguardando Consulta
-                {pacientesPendentesFiltered?.length > 0 &&
+                {pacientesAguardandoHojeFiltered?.length > 0 &&
                   <span style={{
                     backgroundColor: '#1890ff',
                     color: 'white',
@@ -2560,7 +2376,7 @@ const Consultorio = () => {
                     fontSize: '12px',
                     marginLeft: '8px'
                   }}>
-                    {pacientesPendentesFiltered.length}
+                    {pacientesAguardandoHojeFiltered.length}
                   </span>
                 }
               </span>
@@ -2580,12 +2396,62 @@ const Consultorio = () => {
               </div>
               <Table
                 columns={columnsPendentes}
-                dataSource={pacientesPendentesFiltered}
-                rowKey="id"
+                dataSource={pacientesAguardandoHojeFiltered}
+                rowKey={(record) => record.consultaId || record.consulta_id || record.agendamentoId || record.agendamento_id || record.codigo_agendamento || record.nid || record.id}
                 bordered
                 loading={loadingPendentes}
                 pagination={{ pageSize: 8 }}
                 locale={{ emptyText: 'Não há pacientes aguardando consulta' }}
+              />
+            </TabPane>
+
+            <TabPane
+              tab={
+                <span>
+                  <ClockCircleOutlined />
+                  Pacientes Pendentes
+                  {pacientesPendentesAntigosFiltered?.length > 0 &&
+                    <span style={{
+                      backgroundColor: '#fa8c16',
+                      color: 'white',
+                      borderRadius: '50%',
+                      padding: '2px 8px',
+                      fontSize: '12px',
+                      marginLeft: '8px'
+                    }}>
+                      {pacientesPendentesAntigosFiltered.length}
+                    </span>
+                  }
+                </span>
+              }
+              key="4"
+            >
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="Consultas pendentes de dias anteriores"
+                description="Após o dia da marcação, o paciente volta ao fluxo de triagem. Com 3 dias de ausência, o ciclo é reiniciado para a recepção."
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Title level={4}>Pacientes Pendentes</Title>
+                <Search
+                  placeholder="Buscar por nome, apelido ou NID"
+                  allowClear
+                  onSearch={value => setSearchPendentes(value)}
+                  onChange={e => setSearchPendentes(e.target.value)}
+                  style={{ width: 300 }}
+                  enterButton={<SearchOutlined />}
+                />
+              </div>
+              <Table
+                columns={columnsPendentes}
+                dataSource={pacientesPendentesAntigosFiltered}
+                rowKey={(record) => record.consultaId || record.consulta_id || record.agendamentoId || record.agendamento_id || record.codigo_agendamento || record.nid || record.id}
+                bordered
+                loading={loadingPendentes}
+                pagination={{ pageSize: 8 }}
+                locale={{ emptyText: 'Não há pacientes pendentes de dias anteriores' }}
               />
             </TabPane>
 
@@ -2657,6 +2523,36 @@ const Consultorio = () => {
                 type="card"
                 size="small"
               >
+                <TabPane
+                  tab={
+                    <span>
+                      <CheckCircleOutlined /> Todas
+                      {consultasRealizadasFiltradas?.length > 0 &&
+                        <span style={{
+                          backgroundColor: '#52c41a',
+                          color: 'white',
+                          borderRadius: '50%',
+                          padding: '2px 8px',
+                          fontSize: '12px',
+                          marginLeft: '8px'
+                        }}>
+                          {consultasRealizadasFiltradas.length}
+                        </span>
+                      }
+                    </span>
+                  }
+                  key="todas"
+                >
+                  <Table
+                    columns={columnsRealizadas}
+                    dataSource={consultasRealizadasFiltradas}
+                    rowKey={(record) => record.consulta_id || record.id || record.agendamento_id || record.nid}
+                    bordered
+                    loading={loadingRealizadas}
+                    pagination={{ pageSize: 8 }}
+                    locale={{ emptyText: 'Não há consultas concluídas' }}
+                  />
+                </TabPane>
                 <TabPane 
                   tab={
                     <span>
@@ -2667,7 +2563,7 @@ const Consultorio = () => {
                 >
                   <Table
                     columns={columnsExames}
-                    dataSource={consultasRealizadas.filter(c => {
+                    dataSource={consultasRealizadasFiltradas.filter(c => {
                       // Filtrar apenas consultas com exames
                       if (!c.exames?.length) return false;
                       
@@ -2701,7 +2597,7 @@ const Consultorio = () => {
                 >
                   <Table
                     columns={columnsPrescricoes}
-                    dataSource={consultasRealizadas.filter(c => {
+                    dataSource={consultasRealizadasFiltradas.filter(c => {
                       // Filtrar apenas consultas com prescrições
                       if (!c.prescricoes?.length) return false;
                       
@@ -3114,7 +3010,7 @@ const Consultorio = () => {
                         boxShadow: '0 1px 4px rgba(255, 229, 143, 0.2)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
-                          <svg viewBox="64 64 896 896" focusable="false" data-icon="file-text" width="1em" height="1em" fill="#faad14" aria-hidden="true" style={{ marginRight: '8px', fontSize: '16px' }}>
+                          <svg viewBox="64 64 896 896" focusable="false" data-icon="file-text" width="1em" height="1em" fill="#fa8c16" aria-hidden="true" style={{ marginRight: '8px', fontSize: '16px' }}>
                             <path d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0042 42h216v494zM504 618H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8h184c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8zM312 490v48c0 4.4 3.6 8 8 8h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8z"></path>
                           </svg>
                           <strong>Observações Clínicas:</strong>
@@ -3295,7 +3191,7 @@ const Consultorio = () => {
                           }}>
                             <Text strong style={{
                               fontSize: '15px',
-                              color: '#faad14',
+                              color: '#fa8c16',
                               display: 'flex',
                               alignItems: 'center',
                               borderBottom: '1px solid #ffe58f',
@@ -3405,7 +3301,11 @@ const Consultorio = () => {
             <Form.Item
               label="Motivo da Transferência"
               name="motivo"
-              rules={[{ required: true, message: 'Informe o motivo da transferência' }]}
+              rules={[
+                { required: true, message: 'Informe o motivo da transferência' },
+                { min: 5, message: 'Descreva melhor o motivo da transferência' },
+                { whitespace: true, message: 'Informe o motivo da transferência' }
+              ]}
             >
               <Input.TextArea
                 rows={3}
@@ -3504,7 +3404,7 @@ const Consultorio = () => {
                 }}
               >
                 {especialidades.map(esp => (
-                  <Option key={esp} value={esp}>{esp}</Option>
+                  <Option key={esp.id || esp.nome} value={esp.nome}>{esp.nome}</Option>
                 ))}
               </Select>
             </Form.Item>
@@ -3533,7 +3433,11 @@ const Consultorio = () => {
             <Form.Item
               label="Motivo da Transferência"
               name="motivo"
-              rules={[{ required: true, message: 'Informe o motivo da transferência' }]}
+              rules={[
+                { required: true, message: 'Informe o motivo da transferência' },
+                { min: 10, message: 'Descreva melhor o motivo da transferência' },
+                { whitespace: true, message: 'Informe o motivo da transferência' }
+              ]}
             >
               <Input.TextArea
                 rows={3}

@@ -1,40 +1,197 @@
-import axios from 'axios';
+import api from './api';
+import { isOutOfConsultationQueue } from '../utils/patientWorkflowStatus';
 
-const API_BASE = 'http://196.3.100.216/api';
+const extractList = (payload) => {
+  const data = payload?.data?.data || payload?.data || payload?.items || payload?.results || payload || [];
 
-const api = axios.create({
-  baseURL: API_BASE,
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  }
-});
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.results)) return data.results;
 
-// Interceptor para adicionar token em todas as requisições
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
+  return [];
+};
+
+export const normalizarPacienteConsulta = (item) => {
+  const agendamento = item?.agendamento || item?.agendamento_consulta || item?.agendamentoConsulta || {};
+  const triagem = item?.triagem || item?.dados_triagem || agendamento?.triagem || {};
+  const consulta = item?.consulta || item?.consulta_medica || agendamento?.consulta || {};
+  const paciente = item?.paciente || item?.utente || item?.paciente_dados || agendamento?.paciente || triagem?.paciente || consulta?.paciente || {};
+  const sinaisVitais = item?.sinais_vitais || agendamento?.sinais_vitais || triagem?.sinais_vitais || triagem?.sinaisVitais || {};
+  const historicoSinais = item?.historico_sinais_vitais || item?.historicoSinaisVitais || agendamento?.historico_sinais_vitais || { data: [] };
+  const historicoConsultas = item?.historico_consultas || item?.historicoConsultas || agendamento?.historico_consultas || { data: [] };
+  const historicoPrescricoes = item?.historico_prescricoes || item?.historicoPrescricoes || agendamento?.historico_prescricoes || { data: [] };
+  const consultaId = item?.consulta_id || item?.consultaId || agendamento?.consulta_id || agendamento?.consultaId || consulta?.id || null;
+  const pareceAgendamento = Boolean(
+    item?.agendamento_id ||
+    item?.agendamentoId ||
+    agendamento?.id ||
+    agendamento?.agendamento_id ||
+    item?.codigo_agendamento ||
+    agendamento?.codigo_agendamento ||
+    item?.data_agendamento ||
+    agendamento?.data_agendamento ||
+    item?.hora_agendamento ||
+    agendamento?.hora_agendamento ||
+    item?.consulta_criada !== undefined
+  );
+  const agendamentoId = item?.agendamento_id || item?.agendamentoId || agendamento?.id || agendamento?.agendamento_id || (pareceAgendamento ? item?.id : null);
+  const pacienteId = item?.paciente_id || item?.pacienteId || agendamento?.paciente_id || agendamento?.pacienteId || consulta?.paciente_id || triagem?.paciente_id || paciente?.id;
+  const dataNascimento = item?.data_nascimento || item?.dataNascimento || agendamento?.data_nascimento || consulta?.data_nascimento || triagem?.data_nascimento || paciente?.data_nascimento;
+  const nomeCompletoPaciente = paciente?.nome_completo || paciente?.nomeCompleto || '';
+  const nome = item?.nome || agendamento?.nome || consulta?.nome || triagem?.nome || paciente?.nome || (nomeCompletoPaciente ? nomeCompletoPaciente.split(' ')[0] : '') || '';
+  const apelido = item?.apelido || agendamento?.apelido || consulta?.apelido || triagem?.apelido || paciente?.apelido || (nomeCompletoPaciente ? nomeCompletoPaciente.split(' ').slice(1).join(' ') : '') || '';
+  const telefone = item?.telefone || item?.celular || agendamento?.telefone || consulta?.telefone || paciente?.telefone || paciente?.celular || '';
+  const tipoUtente = item?.tipoUtente || item?.tipo_utente || agendamento?.tipo_utente || consulta?.tipo_utente || paciente?.tipo_utente || triagem?.tipo_utente || '';
+  const motivoConsulta = item?.motivo_consulta || item?.motivoConsulta || item?.motivo || agendamento?.motivo_consulta || agendamento?.motivo || consulta?.motivo_consulta || triagem?.observacoes || '';
+  const dataConsulta = item?.dataConsulta || agendamento?.dataConsulta || consulta?.dataConsulta || item?.data_consulta_local || item?.data_consulta || agendamento?.data_consulta || consulta?.data_consulta || item?.data_agendamento || agendamento?.data_agendamento || item?.created_at;
+  const horaConsulta = item?.horaConsulta || item?.hora_consulta || agendamento?.hora_consulta || consulta?.hora_consulta || item?.hora_agendamento || agendamento?.hora_agendamento;
+
+  return {
+    ...item,
+    id: consultaId || agendamentoId || item?.id || item?.codigo_agendamento || item?.nid,
+    key: consultaId || agendamentoId || item?.id || item?.codigo_agendamento || item?.nid,
+    consulta_id: consultaId,
+    consultaId,
+    agendamento_id: agendamentoId,
+    agendamentoId,
+    codigo_agendamento: item?.codigo_agendamento || item?.codigoAgendamento || agendamento?.codigo_agendamento || agendamento?.codigoAgendamento,
+    triagem_id: item?.triagem_id || agendamento?.triagem_id || triagem?.id,
+    triagemId: item?.triagem_id || agendamento?.triagem_id || triagem?.id,
+    paciente_id: pacienteId,
+    pacienteId,
+    nid: item?.nid || agendamento?.nid || triagem?.nid || paciente?.nid,
+    nome,
+    apelido,
+    nomeCompleto: [nome, apelido].filter(Boolean).join(' '),
+    genero: item?.genero || agendamento?.genero || triagem?.genero || paciente?.genero || paciente?.sexo || '',
+    idade: item?.idade || agendamento?.idade || triagem?.idade || paciente?.idade,
+    data_nascimento: dataNascimento,
+    dataNascimento,
+    tipo_utente: tipoUtente,
+    tipoUtente,
+    telefone,
+    celular: item?.celular || telefone,
+    telefoneAlternativo: item?.telefone_alternativo || paciente?.telefone_alternativo || '',
+    email: item?.email || paciente?.email || '',
+    endereco: item?.endereco || paciente?.endereco || '',
+    medico: item?.medico || item?.medico_nome || agendamento?.medico || agendamento?.medico_nome || consulta?.medico || triagem?.medico || '',
+    medico_id: item?.medico_id || item?.medicoId || agendamento?.medico_id || agendamento?.medicoId || consulta?.medico_id,
+    medicoId: item?.medico_id || item?.medicoId || agendamento?.medico_id || agendamento?.medicoId || consulta?.medico_id,
+    especialidade: item?.especialidade || agendamento?.especialidade || consulta?.especialidade || triagem?.especialidade || '',
+    especialidade_id: item?.especialidade_id || item?.especialidadeId || agendamento?.especialidade_id || agendamento?.especialidadeId || consulta?.especialidade_id || null,
+    dataConsulta,
+    data_consulta: dataConsulta,
+    horaConsulta,
+    hora_consulta: item?.hora_consulta || horaConsulta,
+    tipoConsulta: item?.tipoConsulta || item?.tipo_consulta || agendamento?.tipoConsulta || agendamento?.tipo_consulta || '',
+    tipo_consulta: item?.tipo_consulta || item?.tipoConsulta || agendamento?.tipo_consulta || agendamento?.tipoConsulta || '',
+    motivoConsulta,
+    motivo_consulta: motivoConsulta,
+    observacoes: item?.observacoes || triagem?.observacoes || '',
+    status: item?.status || agendamento?.status || consulta?.status || 'agendado',
+    prioridade: item?.prioridade || item?.estado_urgencia || agendamento?.prioridade || triagem?.urgencia || triagem?.estado_urgencia || 'normal',
+    origem: item?.origem || (consultaId ? 'consultation-service' : 'triagem'),
+    sinais_vitais: sinaisVitais,
+    sinaisVitais,
+    peso: item?.peso || sinaisVitais?.peso,
+    altura: item?.altura || sinaisVitais?.altura,
+    imc: item?.imc || sinaisVitais?.imc,
+    pressaoArterial: item?.pressaoArterial || item?.pressao_arterial || sinaisVitais?.pressao_arterial,
+    frequenciaCardiaca: item?.frequenciaCardiaca || item?.frequencia_cardiaca || sinaisVitais?.frequencia_cardiaca,
+    temperatura: item?.temperatura || sinaisVitais?.temperatura,
+    oximetria: item?.oximetria || sinaisVitais?.oximetria,
+    glicemiaCapilar: item?.glicemiaCapilar || item?.glicemia_capilar || sinaisVitais?.glicemia_capilar,
+    historico_sinais_vitais: historicoSinais,
+    historicoSinaisVitais: historicoSinais,
+    historico_consultas: historicoConsultas,
+    historicoConsultas,
+    historico_prescricoes: historicoPrescricoes,
+    historicoPrescricoes,
+  };
+};
+
+const isBlankValue = (value) => (
+  value === null ||
+  value === undefined ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0) ||
+  (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
 );
 
-// Interceptor para tratar erros de resposta
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expirado ou inválido
-      // Você pode adicionar lógica de refresh token ou redirect para login aqui
+const mergePreferindoPreenchidos = (base = {}, novo = {}) => {
+  const merged = { ...base };
+
+  Object.entries(novo).forEach(([key, value]) => {
+    const atual = merged[key];
+
+    if (isBlankValue(atual) && !isBlankValue(value)) {
+      merged[key] = value;
+      return;
     }
-    return Promise.reject(error);
+
+    if (
+      atual &&
+      value &&
+      typeof atual === 'object' &&
+      typeof value === 'object' &&
+      !Array.isArray(atual) &&
+      !Array.isArray(value)
+    ) {
+      merged[key] = mergePreferindoPreenchidos(atual, value);
+    }
+  });
+
+  return merged;
+};
+
+const mergeConsultasPendentes = (...listas) => {
+  const mapa = new Map();
+
+  listas.flat().forEach((item) => {
+    const normalizado = normalizarPacienteConsulta(item);
+
+    const temIdentificacaoClinica = Boolean(
+      normalizado.nid ||
+      normalizado.nome ||
+      normalizado.apelido ||
+      normalizado.nomeCompleto
+    );
+
+    if (!temIdentificacaoClinica) {
+      return;
+    }
+
+    const chave = normalizado.nid
+      ? `nid:${normalizado.nid}`
+      : normalizado.paciente_id || normalizado.pacienteId
+        ? `paciente:${normalizado.paciente_id || normalizado.pacienteId}`
+        : normalizado.agendamento_id
+          ? `agendamento:${normalizado.agendamento_id}`
+          : `id:${normalizado.id}`;
+
+    if (!mapa.has(chave)) {
+      mapa.set(chave, normalizado);
+      return;
+    }
+
+    mapa.set(chave, mergePreferindoPreenchidos(mapa.get(chave), normalizado));
+  });
+
+  return Array.from(mapa.values());
+};
+
+const requestListOrEmpty = async (url, params = {}, timeout = 6000) => {
+  try {
+    const response = await api.get(url, { params, timeout });
+    return extractList(response.data);
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[consultas] Endpoint ignorado no carregamento parcial: ${url}`, error?.message || error);
+    }
+    return [];
   }
-);
+};
 
 /**
  * Buscar consultas pendentes (pacientes aguardando atendimento)
@@ -42,52 +199,30 @@ api.interceptors.response.use(
  * @returns {Promise} - Dados das consultas pendentes
  */
 const getConsultasPendentes = async (params = {}) => {
-  try {
-    // Tentar primeiro o endpoint de agendamentos (consultas agendadas)
-    const agendamentosResponse = await api.get('http://196.3.100.216/api/agenda/agendamentos/', { params });
-    
-    console.log('📋 Agendamentos recebidos:', agendamentosResponse.data);
-    console.log('📊 Total de agendamentos:', agendamentosResponse.data?.data?.length || 0);
-    
-    // A resposta vem em formato paginado: { data: { data: [...], current_page, etc }, status: 'success' }
-    // Precisamos retornar no formato esperado pelo hook: { status: 'success', data: { data: [...] } }
-    if (agendamentosResponse.data?.status === 'success' && agendamentosResponse.data?.data) {
-      const paginatedData = agendamentosResponse.data.data;
-      
-      // Retornar mantendo a estrutura paginada para o hook extrair corretamente
-      return {
-        status: 'success',
-        data: paginatedData,  // Aqui já tem { data: [...], current_page, etc }
-        message: 'Agendamentos encontrados'
-      };
-    }
-    
-    // Se vazio, retornar estrutura paginada vazia
-    return {
-      status: 'success',
-      data: {
-        data: [],
-        current_page: 1,
-        total: 0,
-        per_page: 15
-      },
-      message: 'Nenhum agendamento encontrado'
-    };
-  } catch (error) {
-    console.error('❌ Erro ao buscar consultas pendentes:', error);
-    
-    // Retornar vazio em vez de erro para não quebrar a interface
-    return {
-      status: 'success',
-      data: {
-        data: [],
-        current_page: 1,
-        total: 0,
-        per_page: 15
-      },
-      message: 'Nenhum agendamento disponível'
-    };
-  }
+  const perPage = params.per_page || params.perPage || 100;
+  const parametrosConsultas = { ...params, per_page: perPage };
+
+  const [consultasCriadas, agendamentosTriagem] = await Promise.all([
+    requestListOrEmpty('/api/pacientes/consultorio/consultas/pendentes', parametrosConsultas, 4500),
+    requestListOrEmpty('/api/pacientes/consultorio/agenda/pendentes', parametrosConsultas, 4500),
+  ]);
+
+  const consultas = mergeConsultasPendentes(consultasCriadas, agendamentosTriagem)
+    .filter(item => item.nid || item.nome || item.apelido || item.nomeCompleto)
+    .filter(item => !isOutOfConsultationQueue(item));
+
+  return {
+    status: 'success',
+    data: {
+      data: consultas,
+      current_page: 1,
+      total: consultas.length,
+      per_page: consultas.length || 15,
+    },
+    message: consultas.length > 0
+      ? 'Pacientes aguardando consulta encontrados'
+      : 'Nenhum paciente aguardando consulta',
+  };
 };
 
 /**
@@ -97,10 +232,9 @@ const getConsultasPendentes = async (params = {}) => {
  */
 const getConsultasRealizadas = async (params = {}) => {
   try {
-    const response = await api.get('/consultas/realizadas/', { params });
+    const response = await api.get('/api/pacientes/consultorio/consultas/realizadas/', { params });
     return response.data;
   } catch (error) {
-    console.warn('⚠️ Histórico de consultas não disponível:', error.message);
     throw error;
   }
 };
@@ -119,7 +253,7 @@ const getConsultasPaciente = async (pacienteId, token = null) => {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const response = await api.get('/consultas', {
+  const response = await api.get('/api/pacientes/consultorio/consultas', {
     params: { paciente_id: pacienteId },
     headers
   });
@@ -133,7 +267,7 @@ const getConsultasPaciente = async (pacienteId, token = null) => {
  * @returns {Promise} - Dados detalhados da consulta
  */
 const getConsulta = async (id) => {
-  const response = await api.get(`/consultas/${id}`);
+  const response = await api.get(`/api/pacientes/consultorio/consultas/${id}`);
   return response.data;
 };
 
@@ -143,7 +277,7 @@ const getConsulta = async (id) => {
  * @returns {Promise} - Consulta criada
  */
 const createConsulta = async (payload) => {
-  const response = await api.post('/consultas', payload);
+  const response = await api.post('/api/pacientes/consultorio/consultas', payload);
   return response.data;
 };
 
@@ -154,7 +288,7 @@ const createConsulta = async (payload) => {
  * @returns {Promise} - Consulta atualizada
  */
 const updateConsulta = async (id, payload) => {
-  const response = await api.put(`/consultas/${id}`, payload);
+  const response = await api.put(`/api/pacientes/consultorio/consultas/${id}`, payload);
   return response.data;
 };
 
@@ -182,7 +316,7 @@ const toISODate = (dateStr) => {
   return dateStr;
 };
 
-const finalizarConsulta = async (consultaId, payload) => {
+const finalizarConsulta = async (consultaId, payload = {}) => {
   // Transforma o array de exames para o formato esperado pela API
   const examesTransformados = (payload.exames || []).map(exame => ({
     nome: exame.nome || exame.examesSolicitados || exame.tipo_exame || '',
@@ -190,32 +324,21 @@ const finalizarConsulta = async (consultaId, payload) => {
     data_coleta: toISODate(exame.dataColeta || exame.data_coleta) || null,
     observacoes: exame.observacoes || '',
   }));
+
+  const agendamentoId = payload.agendamentoId || payload.agendamento_id || consultaId;
   
   const fullPayload = {
-    agendamentoId: consultaId,  // Changed to camelCase to match FinalizarConsultaRequest
     ...payload,
+    agendamentoId,
+    agendamento_id: agendamentoId,
     exames: examesTransformados,
   };
 
-  console.log('📤 Enviando finalização de consulta:', {
-    consultaId,
-    endpoint: `/api/consultas/${consultaId}/finalizar`,
-    payload: fullPayload
-  });
-
-  const response = await axios.post(
-    `http://196.3.100.216/api/consultas/${consultaId}/finalizar`,
-    fullPayload,
-    {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('access_token') || localStorage.getItem('token')}`
-      }
-    }
+  const response = await api.post(
+    '/api/pacientes/consultorio/consultas/finalizar',
+    fullPayload
   );
 
-  console.log('✅ Consulta finalizada com sucesso:', response.data);
   return response.data;
 };
 
@@ -226,7 +349,7 @@ const finalizarConsulta = async (consultaId, payload) => {
  * @returns {Promise} - Consulta atualizada com exames
  */
 const solicitarExames = async (consultaId, payload) => {
-  const response = await api.post(`/consultas/${consultaId}/exames`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/consultas/${consultaId}/exames`, payload);
   
   return response.data;
 };
@@ -238,7 +361,7 @@ const solicitarExames = async (consultaId, payload) => {
  * @returns {Promise} - Registro de alta
  */
 const registrarAlta = async (consultaId, payload) => {
-  const response = await api.post(`/consultas/${consultaId}/alta`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/consultas/${consultaId}/alta`, payload);
   return response.data;
 };
 
@@ -249,7 +372,7 @@ const registrarAlta = async (consultaId, payload) => {
  * @returns {Promise} - Registro de óbito
  */
 const registrarObito = async (consultaId, payload) => {
-  const response = await api.post(`/consultas/${consultaId}/obito`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/consultas/${consultaId}/obito`, payload);
   return response.data;
 };
 
@@ -271,16 +394,9 @@ const transferirMedico = async (agendamentoId, payload) => {
     throw new Error(`ID inválido: ${agendamentoId}. Deve ser um número inteiro positivo.`);
   }
   
-  const response = await axios.post(
-    `http://196.3.100.216/api/agenda/consultas-agendadas/${id}/transferir-medico`,
-    payload,
-    {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('access_token') || localStorage.getItem('token')}`
-      }
-    }
+  const response = await api.post(
+    `/api/pacientes/consultorio/agenda/consultas-agendadas/${id}/transferir-medico`,
+    payload
   );
   
   return response.data;
@@ -298,7 +414,7 @@ const transferirMedico = async (agendamentoId, payload) => {
  * @endpoint POST /api/consultas/{codigo_agendamento}/transferir-especialidade
  */
 const transferirEspecialidade = async (consultaId, payload) => {
-  const response = await api.post(`/consultas/${consultaId}/transferir-especialidade`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/consultas/${consultaId}/transferir-especialidade`, payload);
   return response.data;
 };
 
@@ -309,10 +425,9 @@ const transferirEspecialidade = async (consultaId, payload) => {
  */
 const getPacientesComExames = async (params = {}) => {
   try {
-    const response = await api.get('/consultas/retorno-exames/', { params });
+    const response = await api.get('/api/pacientes/consultorio/consultas/retorno-exames/', { params });
     return response.data;
   } catch (error) {
-    console.error('Erro ao buscar pacientes com exames:', error);
     throw error;
   }
 };
@@ -324,7 +439,7 @@ const getPacientesComExames = async (params = {}) => {
  * @returns {Promise} - Prescrição criada
  */
 const adicionarPrescricao = async (consultaId, payload) => {
-  const response = await api.post(`/consultas/${consultaId}/prescricoes`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/consultas/${consultaId}/prescricoes`, payload);
   return response.data;
 };
 
@@ -336,7 +451,7 @@ const adicionarPrescricao = async (consultaId, payload) => {
  * @returns {Promise} - Prescrição atualizada
  */
 const atualizarPrescricao = async (consultaId, prescricaoId, payload) => {
-  const response = await api.put(`/consultas/${consultaId}/prescricoes/${prescricaoId}`, payload);
+  const response = await api.put(`/api/pacientes/consultorio/consultas/${consultaId}/prescricoes/${prescricaoId}`, payload);
   return response.data;
 };
 
@@ -347,7 +462,7 @@ const atualizarPrescricao = async (consultaId, prescricaoId, payload) => {
  * @returns {Promise} - Confirmação de remoção
  */
 const removerPrescricao = async (consultaId, prescricaoId) => {
-  const response = await api.delete(`/consultas/${consultaId}/prescricoes/${prescricaoId}`);
+  const response = await api.delete(`/api/pacientes/consultorio/consultas/${consultaId}/prescricoes/${prescricaoId}`);
   return response.data;
 };
 
@@ -356,8 +471,9 @@ const removerPrescricao = async (consultaId, prescricaoId) => {
  * @param {number} consultaId - ID da consulta
  * @returns {Promise} - Lista de prescrições
  */
-const getPrescricoes = async (consultaId) => {
-  const response = await api.get(`/consultas/${consultaId}/prescricoes`);
+const getPrescricoes = async (consultaId, params = {}) => {
+  const url = consultaId ? `/api/pacientes/consultorio/consultas/${consultaId}/prescricoes` : '/api/pacientes/consultorio/prescricoes';
+  const response = await api.get(url, { params });
   return response.data;
 };
 
@@ -371,7 +487,7 @@ const getPrescricoes = async (consultaId) => {
  * @returns {Promise} - Lista de exames
  */
 const getExames = async (params = {}) => {
-  const response = await api.get('/exames', { params });
+  const response = await api.get('/api/pacientes/consultorio/exames', { params });
   return response.data;
 };
 
@@ -380,35 +496,8 @@ const getExames = async (params = {}) => {
  * @returns {Promise} - Lista de exames pendentes
  */
 const getExamesPendentes = async () => {
-  try {
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-    const tokenPreview = token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'Missing';
-    console.log('🔍 Buscando exames pendentes com token:', tokenPreview);
-    
-    const response = await api.get('/laboratorio/agendamentos/pendentes/');
-    console.log('✅ Exames pendentes carregados:', response.data);
-    return response.data;
-  } catch (error) {
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-    const tokenPreview = token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'Missing';
-    const status = error.response?.status;
-    const message = error.response?.data?.message || error.message;
-    
-    console.error('❌ Erro ao buscar exames pendentes:', {
-      status,
-      message,
-      tokenPreview,
-      tokenPresent: !!token,
-      url: error.config?.url,
-      authHeader: error.config?.headers?.Authorization?.substring(0, 30) + '...'
-    });
-    
-    // Se for 401, pode ser token expirado - limpar e forçar novo login
-    if (status === 401) {
-      console.warn('⚠️ Token inválido/expirado. Usuário precisa fazer login novamente.');
-    }
-    throw error;
-  }
+  const response = await api.get('/api/laboratorio/agendamentos/pendentes');
+  return response.data;
 };
 
 /**
@@ -416,7 +505,7 @@ const getExamesPendentes = async () => {
  * @returns {Promise} - Lista de exames urgentes
  */
 const getExamesUrgentes = async () => {
-  const response = await api.get('/exames/urgentes');
+  const response = await api.get('/api/pacientes/consultorio/exames/urgentes');
   return response.data;
 };
 
@@ -426,7 +515,7 @@ const getExamesUrgentes = async () => {
  * @returns {Promise} - Lista de exames do paciente
  */
 const getExamesPorPaciente = async (pacienteId) => {
-  const response = await api.get(`/exames/paciente/${pacienteId}`);
+  const response = await api.get(`/api/pacientes/consultorio/exames/paciente/${pacienteId}`);
   return response.data;
 };
 
@@ -436,7 +525,7 @@ const getExamesPorPaciente = async (pacienteId) => {
  * @returns {Promise} - Lista de exames da consulta
  */
 const getExamesPorConsulta = async (consultaId) => {
-  const response = await api.get(`/exames/consulta/${consultaId}`);
+  const response = await api.get(`/api/pacientes/consultorio/exames/consulta/${consultaId}`);
   return response.data;
 };
 
@@ -446,7 +535,7 @@ const getExamesPorConsulta = async (consultaId) => {
  * @returns {Promise} - Exame criado
  */
 const createExame = async (payload) => {
-  const response = await api.post('/exames', payload);
+  const response = await api.post('/api/pacientes/consultorio/exames', payload);
   return response.data;
 };
 
@@ -457,7 +546,7 @@ const createExame = async (payload) => {
  * @returns {Promise} - Exame atualizado
  */
 const updateExame = async (id, payload) => {
-  const response = await api.put(`/exames/${id}`, payload);
+  const response = await api.put(`/api/pacientes/consultorio/exames/${id}`, payload);
   return response.data;
 };
 
@@ -468,7 +557,7 @@ const updateExame = async (id, payload) => {
  * @returns {Promise} - Exame agendado
  */
 const agendarExame = async (id, payload) => {
-  const response = await api.post(`/exames/${id}/agendar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/agendar`, payload);
   return response.data;
 };
 
@@ -479,7 +568,7 @@ const agendarExame = async (id, payload) => {
  * @returns {Promise} - Exame coletado
  */
 const coletarExame = async (id, payload) => {
-  const response = await api.post(`/exames/${id}/coletar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/coletar`, payload);
   return response.data;
 };
 
@@ -490,7 +579,7 @@ const coletarExame = async (id, payload) => {
  * @returns {Promise} - Exame com resultado
  */
 const adicionarResultadoExame = async (id, payload) => {
-  const response = await api.post(`/exames/${id}/resultado`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/resultado`, payload);
   return response.data;
 };
 
@@ -501,7 +590,7 @@ const adicionarResultadoExame = async (id, payload) => {
  * @returns {Promise} - Exame com laudo
  */
 const adicionarLaudoExame = async (id, payload) => {
-  const response = await api.post(`/exames/${id}/laudo`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/laudo`, payload);
   return response.data;
 };
 
@@ -512,7 +601,7 @@ const adicionarLaudoExame = async (id, payload) => {
  * @returns {Promise} - Exame com anexo
  */
 const adicionarAnexoExame = async (id, formData) => {
-  const response = await api.post(`/exames/${id}/anexo`, formData, {
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/anexo`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -527,7 +616,7 @@ const adicionarAnexoExame = async (id, formData) => {
  * @returns {Promise} - Exame cancelado
  */
 const cancelarExame = async (id, payload) => {
-  const response = await api.post(`/exames/${id}/cancelar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/exames/${id}/cancelar`, payload);
   return response.data;
 };
 
@@ -537,7 +626,7 @@ const cancelarExame = async (id, payload) => {
  * @returns {Promise} - Confirmação de deleção
  */
 const deleteExame = async (id) => {
-  const response = await api.delete(`/exames/${id}`);
+  const response = await api.delete(`/api/pacientes/consultorio/exames/${id}`);
   return response.data;
 };
 
@@ -551,7 +640,7 @@ const deleteExame = async (id) => {
  * @returns {Promise} - Lista de transferências
  */
 const getTransferencias = async (params = {}) => {
-  const response = await api.get('/transferencias', { params });
+  const response = await api.get('/api/pacientes/consultorio/transferencias', { params });
   return response.data;
 };
 
@@ -560,7 +649,7 @@ const getTransferencias = async (params = {}) => {
  * @returns {Promise} - Lista de transferências pendentes
  */
 const getTransferenciasPendentes = async () => {
-  const response = await api.get('/transferencias/pendentes');
+  const response = await api.get('/api/pacientes/consultorio/transferencias/pendentes');
   return response.data;
 };
 
@@ -570,7 +659,7 @@ const getTransferenciasPendentes = async () => {
  * @returns {Promise} - Lista de transferências do paciente
  */
 const getTransferenciasPorPaciente = async (pacienteId) => {
-  const response = await api.get(`/transferencias/paciente/${pacienteId}`);
+  const response = await api.get('/api/pacientes/consultorio/transferencias', { params: { paciente_id: pacienteId } });
   return response.data;
 };
 
@@ -580,7 +669,7 @@ const getTransferenciasPorPaciente = async (pacienteId) => {
  * @returns {Promise} - Lista de transferências recebidas
  */
 const getTransferenciasRecebidas = async (medicoId) => {
-  const response = await api.get(`/transferencias/medico/${medicoId}/recebidas`);
+  const response = await api.get('/api/pacientes/consultorio/transferencias', { params: { medico_destino_id: medicoId } });
   return response.data;
 };
 
@@ -590,7 +679,7 @@ const getTransferenciasRecebidas = async (medicoId) => {
  * @returns {Promise} - Lista de transferências enviadas
  */
 const getTransferenciasEnviadas = async (medicoId) => {
-  const response = await api.get(`/transferencias/medico/${medicoId}/enviadas`);
+  const response = await api.get('/api/pacientes/consultorio/transferencias', { params: { medico_origem_id: medicoId } });
   return response.data;
 };
 
@@ -600,7 +689,7 @@ const getTransferenciasEnviadas = async (medicoId) => {
  * @returns {Promise} - Transferência criada
  */
 const createTransferencia = async (payload) => {
-  const response = await api.post('/transferencias', payload);
+  const response = await api.post('/api/pacientes/consultorio/transferencias', payload);
   return response.data;
 };
 
@@ -611,7 +700,7 @@ const createTransferencia = async (payload) => {
  * @returns {Promise} - Transferência aceita
  */
 const aceitarTransferencia = async (id, payload = {}) => {
-  const response = await api.post(`/transferencias/${id}/aceitar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/transferencias/${id}/aceitar`, payload);
   return response.data;
 };
 
@@ -622,7 +711,7 @@ const aceitarTransferencia = async (id, payload = {}) => {
  * @returns {Promise} - Transferência recusada
  */
 const recusarTransferencia = async (id, payload) => {
-  const response = await api.post(`/transferencias/${id}/recusar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/transferencias/${id}/recusar`, payload);
   return response.data;
 };
 
@@ -633,7 +722,7 @@ const recusarTransferencia = async (id, payload) => {
  * @returns {Promise} - Transferência finalizada
  */
 const finalizarTransferencia = async (id, payload = {}) => {
-  const response = await api.post(`/transferencias/${id}/finalizar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/transferencias/${id}/concluir`, payload);
   return response.data;
 };
 
@@ -644,20 +733,10 @@ const finalizarTransferencia = async (id, payload = {}) => {
  * @returns {Promise} - Transferência cancelada
  */
 const cancelarTransferencia = async (id, payload) => {
-  const response = await api.post(`/transferencias/${id}/cancelar`, payload);
+  const response = await api.post(`/api/pacientes/consultorio/transferencias/${id}/cancelar`, payload);
   return response.data;
 };
 
-/**
- * Processar pagamento de transferência
- * @param {number} id - ID da transferência
- * @param {Object} payload - Dados do pagamento
- * @returns {Promise} - Transferência com pagamento processado
- */
-const processarPagamentoTransferencia = async (id, payload) => {
-  const response = await api.post(`/transferencias/${id}/processar-pagamento`, payload);
-  return response.data;
-};
 
 const consultaService = {
   // Consultas
@@ -708,25 +787,6 @@ const consultaService = {
   recusarTransferencia,
   finalizarTransferencia,
   cancelarTransferencia,
-  processarPagamentoTransferencia,
-  
-  // Teste/Debug
-  validateToken: async () => {
-    try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      if (!token) {
-        console.warn('❌ Nenhum token encontrado');
-        return { valid: false, reason: 'No token' };
-      }
-      
-      const response = await api.get('/auth/me');
-      console.log('✅ Token válido:', response.data);
-      return { valid: true, data: response.data };
-    } catch (error) {
-      console.error('❌ Token inválido/expirado:', error.response?.data || error.message);
-      return { valid: false, reason: error.response?.data?.message || error.message };
-    }
-  }
 };
 
 export default consultaService;

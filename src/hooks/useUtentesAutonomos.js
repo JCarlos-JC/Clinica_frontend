@@ -3,7 +3,7 @@ import { message } from 'antd';
 import utenteAutonomoService from '../services/utenteAutonomoService';
 
 /**
- * Hook para gerenciar utentes autônomos
+ * Hook para gerenciar utentes autónomos
  * Baseado no controller UtenteAutonomoController do backend Laravel
  */
 const useUtentesAutonomos = () => {
@@ -12,7 +12,7 @@ const useUtentesAutonomos = () => {
   const [error, setError] = useState(null);
 
   /**
-   * Carrega todos os utentes autônomos do backend
+   * Carrega todos os utentes autónomos do backend
    */
   const carregarUtentesAutonomos = useCallback(async (filtros = {}) => {
     setLoading(true);
@@ -27,15 +27,15 @@ const useUtentesAutonomos = () => {
         setUtentesAutonomos(dados);
         return dados;
       } else {
-        console.warn('⚠️ Erro ao carregar utentes autônomos:', response.message);
+        console.warn('⚠️ Erro ao carregar utentes autónomos:', response.message);
         setUtentesAutonomos([]);
-        message.error(response.message || 'Erro ao carregar utentes autônomos');
+        message.error(response.message || 'Erro ao carregar utentes autónomos');
         return [];
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar utentes autônomos:', error);
+      console.error('❌ Erro ao carregar utentes autónomos:', error);
       setError(error.message);
-      message.error('Erro ao carregar utentes autônomos');
+      message.error('Erro ao carregar utentes autónomos');
       setUtentesAutonomos([]);
       return [];
     } finally {
@@ -44,7 +44,7 @@ const useUtentesAutonomos = () => {
   }, []);
 
   /**
-   * Atualiza um utente autônomo existente
+   * Atualiza um utente autónomo existente
    */
   const atualizarUtenteAutonomo = useCallback(async (id, dadosUtente) => {
     setLoading(true);
@@ -62,7 +62,7 @@ const useUtentesAutonomos = () => {
           )
         );
         
-        message.success(response.message || 'Utente autônomo atualizado com sucesso!');
+        message.success(response.message || 'Utente autónomo atualizado com sucesso!');
         return response.data;
       } else {
         if (response.errors) {
@@ -74,12 +74,12 @@ const useUtentesAutonomos = () => {
             });
           });
         } else {
-          message.error(response.message || 'Erro ao atualizar utente autônomo');
+          message.error(response.message || 'Erro ao atualizar utente autónomo');
         }
-        throw new Error(response.message || 'Erro ao atualizar utente autônomo');
+        throw new Error(response.message || 'Erro ao atualizar utente autónomo');
       }
     } catch (error) {
-      console.error('❌ Erro ao atualizar utente autônomo:', error);
+      console.error('❌ Erro ao atualizar utente autónomo:', error);
       setError(error.message);
       throw error;
     } finally {
@@ -88,7 +88,7 @@ const useUtentesAutonomos = () => {
   }, []);
 
   /**
-   * Exclui um utente autônomo
+   * Exclui um utente autónomo
    */
   const excluirUtenteAutonomo = useCallback(async (id) => {
     setLoading(true);
@@ -102,15 +102,15 @@ const useUtentesAutonomos = () => {
         // Remover da lista local
         setUtentesAutonomos(prev => prev.filter(utente => utente.id !== id));
         
-        message.success(response.message || 'Utente autônomo excluído com sucesso!');
+        message.success(response.message || 'Utente autónomo excluído com sucesso!');
         return true;
       } else {
-        throw new Error(response.data.message || 'Erro ao excluir utente autônomo');
+        throw new Error(response.data.message || 'Erro ao excluir utente autónomo');
       }
     } catch (error) {
-      console.error('❌ Erro ao excluir utente autônomo:', error);
+      console.error('❌ Erro ao excluir utente autónomo:', error);
       setError(error.message);
-      message.error(error.message || 'Erro ao excluir utente autônomo');
+      message.error(error.message || 'Erro ao excluir utente autónomo');
       throw error;
     } finally {
       setLoading(false);
@@ -118,7 +118,7 @@ const useUtentesAutonomos = () => {
   }, []);
 
   /**
-   * Altera o status de um utente autônomo
+   * Altera o status de um utente autónomo
    */
   const alterarStatusUtente = useCallback(async (id, novoStatus) => {
     setLoading(true);
@@ -164,20 +164,18 @@ const useUtentesAutonomos = () => {
         throw new Error(response.message || 'Erro ao obter próximo NID');
       }
     } catch (error) {
-      console.error('❌ Erro ao obter próximo NID:', error);
-      // Gerar um NID temporário baseado no timestamp se o backend falhar
-      const ano = new Date().getFullYear();
-      const timestamp = Date.now().toString().slice(-3);
-      return `UT${timestamp}/${ano}`;
+      const msg = error.message || 'Erro ao obter próximo NID';
+      message.error(msg);
+      throw error;
     }
   }, []);
 
-  // Carregar utentes autônomos ao inicializar o hook
+  // Carregar utentes autónomos ao inicializar o hook
   useEffect(() => {
     carregarUtentesAutonomos();
   }, [carregarUtentesAutonomos]);
 
-    // Função para criar utente autônomo
+    // Função para criar utente autónomo
     const criarUtenteAutonomo = useCallback(async (dadosUtente) => {
       setLoading(true);
       setError(null);
@@ -186,7 +184,7 @@ const useUtentesAutonomos = () => {
         const response = await utenteAutonomoService.createUtenteAutonomo(dadosUtente);
         if (response.success) {
           setUtentesAutonomos(prev => [response.data, ...prev]);
-          message.success(response.message || 'Utente autônomo criado com sucesso!');
+          message.success(response.message || 'Utente autónomo criado com sucesso!');
           return response.data;
         } else {
           if (response.errors) {
@@ -197,12 +195,12 @@ const useUtentesAutonomos = () => {
               });
             });
           } else {
-            message.error(response.message || 'Erro ao criar utente autônomo');
+            message.error(response.message || 'Erro ao criar utente autónomo');
           }
-          throw new Error(response.message || 'Erro ao criar utente autônomo');
+          throw new Error(response.message || 'Erro ao criar utente autónomo');
         }
       } catch (error) {
-        message.error('Erro ao criar utente autônomo');
+        message.error('Erro ao criar utente autónomo');
         setError(error.message);
         throw error;
       } finally {

@@ -3,10 +3,8 @@ import React from 'react';
 import { Layout } from 'antd';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import { ClinicProvider } from './context/ClinicContext';
 import Navbar from './components/layout/Navbar';
 import TemplateCards from './components/layout/TemplateCards'; 
-import Footer from './components/layout/Footer';
 import authService from './services/authService';
 
 import CadastroPaciente from './components/atendimento/CadastroPaciente';
@@ -24,11 +22,11 @@ const { Content } = Layout;
 const App = () => {
 
   return (
-    <ClinicProvider>
-      <Router>
+    <Router>
         <Routes>
-          {/* Rota pública para a página de login como página principal */}
+          {/* Rotas públicas para a página de login */}
           <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
           
           
           {/* Rota para home (cards) protegida - todos os usuários podem acessar após autenticação */}
@@ -41,11 +39,11 @@ const App = () => {
           {/* Todas as outras rotas com Navbar */}
           <Route path="/*" element={
             <ProtectedRoute>
-              <Layout style={{ minHeight: '100vh' }}>
+              <Layout className="clinic-app-shell" style={{ minHeight: '100vh' }}>
                 <Navbar />
                 <Layout>
-                  <Layout style={{ padding: '15px 5px 5px' }}>
-                    <Content>
+                  <Layout className="clinic-main-layout">
+                    <Content className="clinic-page-content">
                       <Routes>
                         {/* Public route */}
                         <Route path="/login" element={<Login />} />
@@ -101,7 +99,6 @@ const App = () => {
                             <UserProfile />
                           </ProtectedRoute>
                         } />
-                  //      <Route path="*" element={<Navigate to="/home" />} />
                       </Routes>
                     </Content>
                     {/* <Footer /> */}
@@ -111,8 +108,7 @@ const App = () => {
             </ProtectedRoute>
           } />
         </Routes>
-      </Router>
-    </ClinicProvider>
+    </Router>
   );
 };
 

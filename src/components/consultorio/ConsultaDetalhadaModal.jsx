@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Modal, 
   Form, 
@@ -40,7 +40,6 @@ import {
 import AltaModal from './AltaModal';
 import ObitoModal from './ObitoModal';
 import TransferenciaModal from './TransferenciaModal';
-import { ClinicContext } from '../../context/ClinicContext';
 import consultaService from '../../services/consultaService';
 import patientService from '../../services/patientService';
 
@@ -155,20 +154,6 @@ const ConsultaDetalhadaModal = ({
   const [prescricaoForm] = Form.useForm();
 
   const { TabPane } = Tabs;
-  const {
-    triagensRealizadas,
-    consultasRealizadas,
-    examesPendentes,
-    setExamesPendentes,
-    // Adicionar consultasPendentes e setConsultasPendentes para uso nas funções internas
-    consultasPendentes,
-    setConsultasPendentes
-  } = useContext(ClinicContext);
-    // Debug log for context data
-  useEffect(() => {
-
-  }, [triagensRealizadas, consultasRealizadas]);
-
   // Debug log for agendamento data
   useEffect(() => {
   }, [agendamento]);
@@ -229,7 +214,9 @@ const ConsultaDetalhadaModal = ({
     // Include any existing prescription or exam data from the agendamento and from the modals
     const completeData = {
       ...values,
-      agendamentoId: agendamento?.id,
+      agendamentoId: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+      agendamento_id: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+      consulta_id: agendamento?.consulta_id || agendamento?.consultaId || null,
       // Include exams and prescriptions from both agendamento and local state
       exames: [...(agendamento?.exames || []), ...exames],
       prescricoes: [...(agendamento?.prescricoes || []), ...prescricoes],
@@ -264,8 +251,8 @@ const ConsultaDetalhadaModal = ({
     form.validateFields().then(values => {
       // Then open the Exame Modal
       setExameModalVisible(true);
-    }).catch(error => {
-      console.error("Form validation failed:", error);
+    }).catch(() => {
+      message.warning('Preencha os campos obrigatórios da consulta antes de continuar.');
     });
   };
 
@@ -273,8 +260,8 @@ const ConsultaDetalhadaModal = ({
     form.validateFields().then(values => {
       // Then open the Prescricao Modal
       setPrescricaoModalVisible(true);
-    }).catch(error => {
-      console.error("Form validation failed:", error);
+    }).catch(() => {
+      message.warning('Preencha os campos obrigatórios da consulta antes de continuar.');
     });
   };
 
@@ -297,8 +284,8 @@ const ConsultaDetalhadaModal = ({
     form.validateFields().then(values => {
       // Save the form data first
       setObitoModalVisible(true);
-    }).catch(error => {
-      console.error("Form validation failed:", error);
+    }).catch(() => {
+      message.warning('Preencha os campos obrigatórios da consulta antes de continuar.');
     });
   };
   const handleObitoModalCancel = (obitoCompleted = false, obitoData = null) => {
@@ -310,7 +297,9 @@ const ConsultaDetalhadaModal = ({
       const obitoCompleteData = { 
         ...formValues, 
         ...obitoData,
-        agendamentoId: agendamento?.id,
+        agendamentoId: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+        agendamento_id: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+        consulta_id: agendamento?.consulta_id || agendamento?.consultaId || null,
         // Óbito sempre termina o ciclo
         deveFinalizarConsulta: true,
         deveTerminarCiclo: true,
@@ -325,8 +314,8 @@ const ConsultaDetalhadaModal = ({
     form.validateFields().then(values => {
       // Save the form data first
       setTransferenciaModalVisible(true);
-    }).catch(error => {
-      console.error("Form validation failed:", error);
+    }).catch(() => {
+      message.warning('Preencha os campos obrigatórios da consulta antes de continuar.');
     });
   };
   
@@ -339,7 +328,9 @@ const ConsultaDetalhadaModal = ({
       const transferenciaCompleteData = { 
         ...formValues, 
         ...transferenciaData,
-        agendamentoId: agendamento?.id,
+        agendamentoId: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+        agendamento_id: agendamento?.agendamento_id || agendamento?.agendamentoId || agendamento?.id,
+        consulta_id: agendamento?.consulta_id || agendamento?.consultaId || null,
         // Transferência sempre termina o ciclo
         deveFinalizarConsulta: true,
         deveTerminarCiclo: true,
@@ -417,51 +408,8 @@ const ConsultaDetalhadaModal = ({
 
       setExames([...exames, ...novosExames]);
       
-      // Se marcado para enviar ao laboratório, adicionar aos exames pendentes do contexto
       if (values.enviarParaLaboratorio) {
-        const exameParaAprovacao = {
-          id: timestamp,
-          pacienteId: agendamento?.id,
-          nid: agendamento?.nid,
-          nome: agendamento?.nome,
-          apelido: agendamento?.apelido,
-          dataNascimento: agendamento?.dataNascimento,
-          examesSolicitados: Array.isArray(values.exames) 
-            ? values.exames.map(exame => typeof exame === 'object' ? exame.nome : exame).join(', ')
-            : '', // String com todos os exames selecionados
-          observacoes: values.observacoes,
-          dataSolicitacao: new Date().toLocaleString(),
-          status: 'pendente', // Status para aprovação na aba "Solicitações de Exames"
-          statusPagamento: 'pendente',
-          solicitadoPor: 'Consultório',
-          prioridade: values.prioridade || 'Normal',
-          dataColeta: values.dataColeta ? values.dataColeta.format('DD/MM/YYYY') : new Date().toLocaleDateString()
-        };
-        
-        // Adicionar ao contexto global
-        setExamesPendentes([...examesPendentes, exameParaAprovacao]);
-        
-        // CORREÇÃO: Marcar o paciente como "aguardando exames" nos consultasPendentes do ClinicContext
-        // Isso garante que CadastroPaciente.jsx detecte corretamente o status
-        if (agendamento && agendamento.id) {
-          // Usar as referências existentes do contexto que já foram obtidas no componente principal
-          if (consultasPendentes && setConsultasPendentes) {
-            setConsultasPendentes(prev =>
-              prev.map(p => {
-                if (p.id === agendamento.id || p.pacienteId === agendamento.id) {
-                  return {
-                    ...p,
-                    aguardandoExames: true,
-                    examesEmAndamento: true
-                  };
-                }
-                return p;
-              })
-            );
-          }
-        }
-        
-        message.success(`${Array.isArray(values.exames) ? values.exames.length : 0} exame(s) enviado(s) para aprovação na aba "Solicitações de Exames"!`);
+        message.success(`${Array.isArray(values.exames) ? values.exames.length : 0} exame(s) preparado(s) para envio ao laboratório pelo backend.`);
       }
 
       exameForm.resetFields();
@@ -521,18 +469,6 @@ const ConsultaDetalhadaModal = ({
           }
         } else {
           console.warn('⚠️ [ExameModal] Passo 2 - ID da solicitação não encontrado na resposta do Consultation-Service');
-        }
-
-        // Atualizar o contexto local
-        if (consultasPendentes && setConsultasPendentes && agendamento?.id) {
-          setConsultasPendentes(prev =>
-            prev.map(p => {
-              if (p.id === agendamento.id || p.pacienteId === agendamento.id) {
-                return { ...p, aguardandoExames: true, statusExames: 'pendente' };
-              }
-              return p;
-            })
-          );
         }
 
         setExameModalVisible(false);
@@ -776,50 +712,6 @@ const ConsultaDetalhadaModal = ({
           </>
         )}
 
-        {/* Mostrar exames já existentes no contexto para este paciente */}
-        {examesPendentes.filter(e => 
-          e.pacienteId === agendamento?.id || 
-          e.nid === agendamento?.nid || 
-          e.nome === agendamento?.nome
-        ).length > 0 && (
-          <>
-            <Divider />
-            <h4>Exames Pendentes no Sistema ({examesPendentes.filter(e => 
-              e.pacienteId === agendamento?.id || 
-              e.nid === agendamento?.nid || 
-              e.nome === agendamento?.nome
-            ).length})</h4>
-            <div style={{ 
-              backgroundColor: '#f0f8ff', 
-              border: '1px solid #d6e4ff', 
-              padding: '12px', 
-              borderRadius: '8px' 
-            }}>
-              {examesPendentes
-                .filter(e => 
-                  e.pacienteId === agendamento?.id || 
-                  e.nid === agendamento?.nid || 
-                  e.nome === agendamento?.nome
-                )
-                .map(exame => (
-                  <div key={exame.id} style={{ marginBottom: '8px' }}>
-                    <Tag color="blue">
-                      {Array.isArray(exame.examesSolicitados) 
-                        ? exame.examesSolicitados.map(ex => typeof ex === 'object' ? (ex.nome || JSON.stringify(ex)) : String(ex)).join(', ')
-                        : typeof exame.examesSolicitados === 'object'
-                          ? exame.examesSolicitados.nome || 'Exame sem nome'
-                          : exame.examesSolicitados
-                      }
-                    </Tag>
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>
-                      Solicitado em: {new Date(exame.dataSolicitacao).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))
-              }
-            </div>
-          </>
-        )}
       </Modal>
     );
   };
@@ -1166,124 +1058,92 @@ const ConsultaDetalhadaModal = ({
     printWindow.document.write(content);
     printWindow.document.close();
     printWindow.print();
-  };  const historicoPaciente = () => {
+  };
+
+  const historicoPaciente = () => {
     if (!agendamento) return [];
 
-    // Estratégia múltipla para identificar o paciente corretamente
-    const nid = agendamento.nid;
-    const pacienteId = agendamento.pacienteId || agendamento.id;
-    const nomePaciente = agendamento.nome;    // Filtra as triagens do paciente usando múltiplos critérios e comparações adicionais
-    const triagensPaciente = Array.isArray(triagensRealizadas) ? triagensRealizadas.filter(t => {
-      return (t.nid === nid || 
-             t.nome === nomePaciente ||
-             (t.pacienteId && String(t.pacienteId) === String(pacienteId)) ||
-             (t.id && String(t.id) === String(pacienteId)) ||
-             (agendamento.exameId && t.id && String(t.id) === String(agendamento.exameId)));
-    }) : [];    // Filtra as consultas do paciente usando múltiplos critérios e comparações adicionais
-    const consultasPaciente = Array.isArray(consultasRealizadas) ? consultasRealizadas.filter(c => {
-      return (c.nid === nid || 
-             c.nome === nomePaciente ||
-             (c.pacienteId && String(c.pacienteId) === String(pacienteId)) ||
-             (c.id && String(c.id) === String(pacienteId)) ||
-             (agendamento.exameId && c.exameId && String(c.exameId) === String(agendamento.exameId)));
-    }) : [];    // Filtra os exames do paciente usando múltiplos critérios e comparações adicionais
-    const examesPaciente = Array.isArray(triagensRealizadas) ? triagensRealizadas.filter(e => {
-      return ((e.nid === nid || 
-              e.nome === nomePaciente ||
-              (e.pacienteId && String(e.pacienteId) === String(pacienteId)) ||
-              (e.id && String(e.id) === String(pacienteId)) ||
-              (agendamento.exameId && e.id && String(e.id) === String(agendamento.exameId)))) &&
-             e.tipoTriagem === 'exames';
-    }) : [];
-
     const eventos = [];
+    const dataBase = agendamento.dataConsulta || agendamento.data_consulta || agendamento.created_at || agendamento.updated_at;
+    const triagem = agendamento.triagem || agendamento.sinaisVitais || agendamento.sinais_vitais || agendamento.triagemConcluida;
+    const consulta = agendamento.consulta || agendamento.consultaRealizada || agendamento;
+    const exames = agendamento.exames || agendamento.examesSolicitados || agendamento.resultadosExames;
 
-    // Adicionar triagens ao histórico
-    triagensPaciente
-      .filter(t => t.tipoTriagem !== 'exames') // Excluir exames, que serão processados separadamente
-      .forEach(t => {
-        eventos.push({
-          tipo: 'Triagem',
-          categoria: 'triagem',
-          descricao: `
-          Peso: ${t.peso || '-'}kg,
-          Pressão Arterial: ${t.pressaoArterial || '-'},
-          Frequência Cardíaca: ${t.frequenciaCardiaca || '-'} bpm,
-          Oximetria: ${t.oximetria || '-'}%,
-          Glicose Capilar: ${t.glicoseCapilar || '-'} mg/dL,
-          Altura: ${t.altura || '-'} m,
-          Temperatura: ${t.temperatura || '-'} °C,
-          Observações: ${t.observacoes || 'Nenhuma'}
+    if (triagem && typeof triagem === 'object') {
+      eventos.push({
+        tipo: 'Triagem',
+        categoria: 'triagem',
+        descricao: `
+          Peso: ${triagem.peso || agendamento.peso || '-'}kg,
+          Pressão Arterial: ${triagem.pressaoArterial || triagem.pressao_arterial || agendamento.pressaoArterial || '-'},
+          Frequência Cardíaca: ${triagem.frequenciaCardiaca || triagem.frequencia_cardiaca || agendamento.frequenciaCardiaca || '-'} bpm,
+          Oximetria: ${triagem.oximetria || agendamento.oximetria || '-'}%,
+          Glicose Capilar: ${triagem.glicoseCapilar || triagem.glicose_capilar || agendamento.glicoseCapilar || '-'} mg/dL,
+          Altura: ${triagem.altura || agendamento.altura || '-'} m,
+          Temperatura: ${triagem.temperatura || agendamento.temperatura || '-'} °C,
+          Observações: ${triagem.observacoes || agendamento.observacoesTriagem || 'Nenhuma'}
         `,
-          data: t.dataTriagem,
-          dadosCompletos: t
-        });
+        data: triagem.dataTriagem || triagem.data_triagem || dataBase,
+        dadosCompletos: triagem
       });
+    }
 
-    // Adicionar consultas ao histórico
-    consultasPaciente.forEach(c => {
+    if (consulta && (consulta.diagnostico || consulta.prescricao || consulta.medicamentos || consulta.historico || consulta.recomendacoes || consulta.observacoes)) {
       eventos.push({
         tipo: 'Consulta Médica',
         categoria: 'consulta',
         descricao: `
-          Especialidade: ${c.especialidade || '-'},
-          Médico: ${c.medico || c.medicoNome || '-'},
-          Diagnóstico: ${c.diagnostico || '-'},
+          Especialidade: ${consulta.especialidade || agendamento.especialidade || '-'},
+          Médico: ${consulta.medico || consulta.medicoNome || agendamento.medico || '-'},
+          Diagnóstico: ${consulta.diagnostico || '-'},
           Medicamentos: ${(() => {
-            if (!c.medicamentos) return 'Nenhum';
-            if (typeof c.medicamentos === 'string') return c.medicamentos;
-            if (Array.isArray(c.medicamentos)) {
-              return c.medicamentos
+            const medicamentos = consulta.medicamentos || consulta.prescricao;
+            if (!medicamentos) return 'Nenhum';
+            if (typeof medicamentos === 'string') return medicamentos;
+            if (Array.isArray(medicamentos)) {
+              return medicamentos
                 .map(med => typeof med === 'object' ? (med.medicamento || med.nome || 'Medicamento sem nome') : med)
                 .join(', ');
             }
             return 'Nenhum';
           })()},
           Exames Solicitados: ${(() => {
-            if (!c.examesSolicitados) return 'Nenhum';
-            if (typeof c.examesSolicitados === 'string') return c.examesSolicitados;
-            if (Array.isArray(c.examesSolicitados)) {
-              return c.examesSolicitados
-                .map(exame => {
-                  if (typeof exame === 'object' && exame !== null) {
-                    return exame.nome || JSON.stringify(exame);
-                  }
-                  return String(exame);
-                })
+            const solicitados = consulta.examesSolicitados || consulta.exames_solicitados || agendamento.examesSolicitados;
+            if (!solicitados) return 'Nenhum';
+            if (typeof solicitados === 'string') return solicitados;
+            if (Array.isArray(solicitados)) {
+              return solicitados
+                .map(exame => (typeof exame === 'object' && exame !== null) ? (exame.nome || JSON.stringify(exame)) : String(exame))
                 .join(', ');
             }
-            if (typeof c.examesSolicitados === 'object' && c.examesSolicitados !== null) {
-              return c.examesSolicitados.nome || JSON.stringify(c.examesSolicitados);
-            }
+            if (typeof solicitados === 'object') return solicitados.nome || JSON.stringify(solicitados);
             return 'Nenhum';
           })()},
-          Recomendações: ${c.recomendacoes || 'Nenhuma'},
-          Observações: ${c.observacoes || 'Nenhuma'}
+          Recomendações: ${consulta.recomendacoes || 'Nenhuma'},
+          Observações: ${consulta.observacoes || 'Nenhuma'}
         `,
-        data: c.dataConsulta,
-        dadosCompletos: c
+        data: consulta.dataConsulta || consulta.data_consulta || dataBase,
+        dadosCompletos: consulta
       });
-    });
+    }
 
-    // Adicionar exames ao histórico
-    examesPaciente.forEach(e => {
-      const resultados = e.resultadosExames ?
-        formatarResultadoExame(e.resultadosExames) :
-        'Nenhum resultado registrado';
-
-      eventos.push({
-        tipo: 'Exames Laboratoriais',
-        categoria: 'exame',
-        descricao: `
-          Resultados: ${resultados}
-          Observações: ${e.observacoes || 'Nenhuma'}
-        `,
-        data: e.dataExames,
-        dadosCompletos: e
+    if (exames && (Array.isArray(exames) ? exames.length > 0 : Object.keys(exames || {}).length > 0)) {
+      const listaExames = Array.isArray(exames) ? exames : [exames];
+      listaExames.forEach((exame) => {
+        eventos.push({
+          tipo: 'Exames Laboratoriais',
+          categoria: 'exame',
+          descricao: `
+            Resultados: ${formatarResultadoExame(exame.resultadosExames || exame.resultados_exames || exame)}
+            Observações: ${exame.observacoes || 'Nenhuma'}
+          `,
+          data: exame.dataExames || exame.data_exames || exame.updated_at || dataBase,
+          dadosCompletos: exame
+        });
       });
-    });    // Ordenar eventos pela data (mais recentes primeiro)
+    }
+
     return eventos.sort((a, b) => {
-      // Garantir que as datas sejam tratadas corretamente, mesmo se forem strings
       const dateA = a.data ? new Date(a.data) : new Date(0);
       const dateB = b.data ? new Date(b.data) : new Date(0);
       return dateB - dateA;
@@ -1495,11 +1355,8 @@ const ConsultaDetalhadaModal = ({
       </Timeline>
     );
   };  const renderTriagensTab = () => {
-    console.log('🎨 Renderizando tab de triagens');
     const eventos = historicoPaciente();
-    console.log('📊 Eventos totais:', eventos.length);
     const triagens = eventos.filter(e => e && e.categoria === 'triagem');
-    console.log('📊 Triagens filtradas:', triagens.length);
 
     if (triagens.length === 0) {
       return (
@@ -1532,7 +1389,6 @@ const ConsultaDetalhadaModal = ({
       </div>
     );
   };  const renderConsultasTab = () => {
-    console.log('🎨 Renderizando tab de consultas');
     const eventos = historicoPaciente();
     const consultas = eventos.filter(e => e && e.categoria === 'consulta');
 
@@ -1830,6 +1686,7 @@ const ConsultaDetalhadaModal = ({
       form={form} 
       layout="vertical" 
       onFinish={handleFinish}
+      onFinishFailed={() => message.warning('Preencha os campos obrigatórios: sintomas e diagnóstico.')}
       requiredMark="optional"
       style={{ backgroundColor: '#fff', padding: '16px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
     >

@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// ❌ REMOVIDO: import { ClinicContext } from '../../context/ClinicContext';
 import usePacientes from '../../hooks/usePacientes';
-// ❌ REMOVIDO: import useConfigurations from '../../hooks/useConfigurations';
+import usePatientReferenceData from '../../hooks/usePatientReferenceData';
 import useParentes from '../../hooks/useParentes';
 import useUtentesAutonomos from '../../hooks/useUtentesAutonomos';
 import useSolicitacaoExames from '../../hooks/useSolicitacaoExames';
+import triagemService from '../../services/triagemService';
+import { API_BASE } from '../../services/apiConfig';
+import { invalidateCachedRequest } from '../../services/requestCache';
+import { subscribeClinicalEvents } from '../../services/clinicalRealtime';
+import { getWorkflowStatus, isWorkflowActive } from '../../utils/patientWorkflowStatus';
 import axios from 'axios';
 import {
   Table,
@@ -28,51 +32,122 @@ import {
   Tabs,
   Typography,
   Alert,
+  notification,
 
 } from 'antd';
-import { PlusOutlined, EditOutlined, SolutionOutlined, UploadOutlined, SearchOutlined, UserOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, SolutionOutlined, UploadOutlined, SearchOutlined, UserOutlined, DeleteOutlined, EyeOutlined, MedicineBoxOutlined, PlusSquareOutlined, FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { TextArea } = Input;
 const { Text } = Typography;
 
+const sameId = (left, right) => String(left ?? '') === String(right ?? '');
+const getCurrentYear = () => dayjs().year();
+
+const FIELD_LABELS = {
+  data_nascimento: 'Data de nascimento',
+  nome: 'Nome',
+  apelido: 'Apelido',
+  genero: 'Gênero',
+  celular: 'Celular',
+  bilhete_identidade: 'Número do documento',
+  nid: 'NID'
+};
+
+const translateValidationMessage = (field, messageText) => {
+  if (field === 'data_nascimento' && /before today/i.test(messageText)) {
+    return 'A data de nascimento deve ser anterior à data de hoje.';
+  }
+
+  if (field === 'data_nascimento' && /must be a date/i.test(messageText)) {
+    return 'A data de nascimento deve ser uma data válida.';
+  }
+
+  if (field === 'nid' && /formato XXXX\/YYYY/i.test(messageText)) {
+    return 'Use o formato 0000/AAAA, por exemplo 0030/2026.';
+  }
+
+  return messageText;
+};
+
+const getNidParts = (nid) => {
+  const match = String(nid || '').trim().match(/^(\d{4})\/(\d{4})$/);
+  if (!match) return null;
+  return {
+    numero: Number(match[1]),
+    ano: Number(match[2])
+  };
+};
+
+const getNidYear = (nid) => getNidParts(nid)?.ano || null;
+
+const validateNid = (_, value) => {
+  const nid = String(value || '').trim();
+  if (!nid) return Promise.resolve();
+
+  const currentYear = getCurrentYear();
+  const parts = getNidParts(nid);
+
+  if (!parts) {
+    return Promise.reject(new Error(`Use o formato 0000/${currentYear}, por exemplo 0001/${currentYear}.`));
+  }
+
+  if (parts.numero <= 0) {
+    return Promise.reject(new Error('O número do NID deve ser maior que zero.'));
+  }
+
+  if (parts.ano > currentYear) {
+    return Promise.reject(new Error(`O ano do NID não pode ser superior a ${currentYear}.`));
+  }
+
+  return Promise.resolve();
+};
+
+const formatValidationErrors = (errors) => Object.entries(errors)
+  .flatMap(([field, messages]) => {
+    const label = FIELD_LABELS[field] || field;
+    const list = Array.isArray(messages) ? messages : [messages];
+    return list.map((messageText) => `${label}: ${translateValidationMessage(field, String(messageText))}`);
+  })
+  .join(' ');
+
+const getApiErrorDescription = (error, fallback) => {
+  const validationErrors = error?.response?.data?.errors || error?.errors;
+  if (validationErrors) {
+    return formatValidationErrors(validationErrors);
+  }
+
+  if (error?.response?.status === 401) return 'A sua sessão expirou. Entre novamente no sistema.';
+  if (error?.response?.status === 403) return 'Não tem permissão para executar esta operação.';
+  if (!error?.response && error?.message) return error.message || 'Não foi possível comunicar com o servidor. Verifique a ligação e tente novamente.';
+  return error?.response?.data?.message || error?.message || fallback;
+};
+
+const showApiError = (title, error, fallback = 'Tente novamente.') => {
+  notification.error({
+    message: title,
+    description: getApiErrorDescription(error, fallback),
+    placement: 'topRight',
+    duration: 6
+  });
+};
+
 const CadastroPaciente = () => {
-  // ❌ REMOVIDO: Uso de dados estáticos do ClinicContext
-  // Agora todos os dados vêm das APIs do backend
-  /* const {
-    pacientes,
-    setPacientes,
-    triagensPendentes,
-    setTriagensPendentes,
-    triagensRealizadas,
-    setTriagensRealizadas,
-    utentesAutonomos,
-    adicionarUtenteAutonomo,
-    atualizarUtenteAutonomo,
-    pacientesTransferidosEspecialidade,
-    setPacientesTransferidosEspecialidade,
-    consultasPendentes,
-    setConsultasPendentes,
-    consultasRealizadas,
-    setConsultasRealizadas,
-    examesPendentes,
-    setExamesPendentes
-  } = useContext(ClinicContext); */
+
 
   // Hook para carregar pacientes do backend e operações CRUD
   const {
     pacientes: apiPacientes,
     loading: pacientesLoading,
     error: pacientesError,
+    pagination: pacientesPagination,
+    carregarPacientes,
     criarPaciente,
     atualizarPaciente
   } = usePacientes();
 
-  // ❌ REMOVIDO: Hook useConfigurations - agora usamos apenas Patient Service (porta 8002)
-  // Todas as configurações são carregadas via rotas individuais do Patient Service
 
-  // Hook para carregar utentes autônomos do backend
   const {
     utentesAutonomos = [], // Lista de utentes autônomos
     criarUtenteAutonomo,
@@ -85,6 +160,7 @@ const CadastroPaciente = () => {
   const [pacientes, setPacientes] = useState(apiPacientes || []);
   // const [pacientesLocal, setPacientesLocal] = useState(apiPacientes || []); // REMOVIDO: não utilizado
   const [triagensPendentes, setTriagensPendentes] = useState([]);
+  const [triagensPendentesCarregadas, setTriagensPendentesCarregadas] = useState(false);
   const [triagensRealizadas, setTriagensRealizadas] = useState([]);
   const [pacientesTransferidosEspecialidade, setPacientesTransferidosEspecialidade] = useState([]);
   const [consultasPendentes, setConsultasPendentes] = useState([]);
@@ -103,14 +179,104 @@ const CadastroPaciente = () => {
     // loadingAcao: loadingAcaoExames
   } = useSolicitacaoExames();
 
-  // � Estados para dados de referência externa (Configuration Service - porta 8004)
-  const [loadingConfiguracoes, setLoadingConfiguracoes] = useState(false);
+  const {
+    racas: patientServiceRacas,
+    tiposUtentes: patientServiceTiposUtentes,
+    unidadesOrganicas: patientServiceUnidadesOrganicas,
+    tiposDocumentos: patientServiceTiposDocumentos,
+    provincias: patientServiceProvincias,
+    distritos: patientServiceDistritos,
+    bairros: patientServiceBairros,
+    grausParentesco: patientServiceGrausParentesco,
+    loading: loadingPatientServiceConfig,
+    loadingDistritos,
+    loadingBairros,
+    error: referenceDataError,
+    reload: carregarConfiguracoesPatientService,
+    loadDistritos,
+    loadBairros
+  } = usePatientReferenceData();
 
-  // �🚀 Carregar configurações de referência externa do Configuration Service (porta 8004)
   useEffect(() => {
-    // ❌ REMOVIDO: Configuration Service não funcionando corretamente
-    setLoadingConfiguracoes(false); // Usar apenas dados do Patient Service
-  }, []); // Executa apenas uma vez na montagem
+    if (referenceDataError) {
+      showApiError(
+        'Não foi possível carregar os dados dos formulários',
+        referenceDataError,
+        'Recarregue os dados e tente novamente.'
+      );
+    }
+  }, [referenceDataError]);
+
+  const getFirstFilled = useCallback((source, fields = []) => {
+    for (const field of fields) {
+      const value = source?.[field];
+      if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return undefined;
+  }, []);
+
+  const resolveReferenceName = useCallback((items, id, fallback, directName) => {
+    if (directName) return directName;
+    const item = Array.isArray(items) ? items.find((entry) => sameId(entry.id, id)) : null;
+    return item?.nome || item?.name || item?.label || fallback || '-';
+  }, []);
+
+  const getRacaNome = useCallback((record) => {
+    const racaId = getFirstFilled(record, ['raca_id', 'racaId']);
+    return resolveReferenceName(
+      patientServiceRacas,
+      racaId,
+      record?.raca_nome || record?.raca?.nome || record?.raca || racaId,
+      record?.raca_nome || record?.raca?.nome
+    );
+  }, [getFirstFilled, patientServiceRacas, resolveReferenceName]);
+
+  const getTipoUtenteId = useCallback((record) => (
+    getFirstFilled(record, ['tipo_utente_id', 'tipoUtenteId']) || record?.tipo_utente?.id
+  ), [getFirstFilled]);
+
+  const getTipoUtenteNome = useCallback((recordOrId) => {
+    const isObject = typeof recordOrId === 'object' && recordOrId !== null;
+    const tipoUtenteId = isObject ? getTipoUtenteId(recordOrId) : recordOrId;
+    const directName = isObject
+      ? (recordOrId.tipo_utente_nome || recordOrId.tipo_utente?.nome)
+      : null;
+    const fallback = isObject
+      ? (recordOrId.tipoUtente && !sameId(recordOrId.tipoUtente, tipoUtenteId) ? recordOrId.tipoUtente : tipoUtenteId)
+      : tipoUtenteId;
+
+    return resolveReferenceName(patientServiceTiposUtentes, tipoUtenteId, fallback, directName);
+  }, [getTipoUtenteId, patientServiceTiposUtentes, resolveReferenceName]);
+
+  const getTipoUtenteById = useCallback((tipoUtenteId) => (
+    Array.isArray(patientServiceTiposUtentes)
+      ? patientServiceTiposUtentes.find((tipo) => sameId(tipo.id, tipoUtenteId))
+      : null
+  ), [patientServiceTiposUtentes]);
+
+  const matchesPaciente = useCallback((item, paciente) => {
+    const pacienteId = paciente?.id;
+    const pacienteNid = paciente?.nid;
+    const itemPacienteId = getFirstFilled(item, ['paciente_id', 'pacienteId']) || item?.paciente?.id;
+    const itemPacienteNid = getFirstFilled(item, ['paciente_nid', 'pacienteNid', 'nid']) || item?.paciente?.nid;
+
+    return (pacienteId && itemPacienteId && sameId(itemPacienteId, pacienteId)) ||
+      (pacienteNid && itemPacienteNid && sameId(itemPacienteNid, pacienteNid));
+  }, [getFirstFilled]);
+
+  const isActiveWorkflowStatus = (status) => isWorkflowActive(status);
+
+  const showFormValidationError = (errorInfo, title = 'Verifique os campos do formulário') => {
+    const fields = errorInfo?.errorFields || [];
+    notification.warning({
+      message: title,
+      description: fields.length
+        ? fields.map((field) => field.errors?.[0]).filter(Boolean).join(' ')
+        : 'Preencha os campos obrigatórios antes de continuar.',
+      placement: 'topRight',
+      duration: 6
+    });
+  };
 
   // Alias para manter compatibilidade com o código existente
   // Sincronizar estado local com dados da API
@@ -119,6 +285,12 @@ const CadastroPaciente = () => {
       setPacientes(apiPacientes);
     }
   }, [apiPacientes]);
+
+  const atualizarPacienteLocal = useCallback((pacienteId, patch) => {
+    setPacientes(prev => prev.map(p => (
+      sameId(p.id, pacienteId) ? { ...p, ...patch } : p
+    )));
+  }, []);
 
   // Carregar solicitações de exames ao montar o componente
   useEffect(() => {
@@ -130,83 +302,26 @@ const CadastroPaciente = () => {
   /**
    * Handler para mudança de província - carrega distritos automaticamente
    */
-  const handleProvinciaChange = async (provinciaId, form) => {
+  const handleProvinciaChange = useCallback(async (provinciaId, targetForm) => {
+    targetForm.setFieldsValue({ distrito: undefined, bairro: undefined });
     try {
-      
-      // Limpar distrito e bairro quando província mudar
-      form.setFieldsValue({ distrito: undefined, bairro: undefined });
-      setPatientServiceDistritos([]);
-      setPatientServiceBairros([]);
-      
-      // Carregar distritos da província selecionada do Patient Service
-      if (provinciaId) {
-        setLoadingDistritos(true);
-        try {
-          const token = localStorage.getItem('token');
-          const headers = {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          };
-
-          const response = await axios.get(`http://196.3.100.216/api/pacientes/distritos`, {
-            headers,
-            params: { provincia_id: provinciaId }
-          });
-
-          const distritosData = response.data?.data || response.data || [];
-          setPatientServiceDistritos(distritosData);
-        } catch (error) {
-          console.error('❌ Erro ao carregar distritos do Patient Service:', error);
-          message.error('Erro ao carregar distritos');
-        } finally {
-          setLoadingDistritos(false);
-        }
-      }
+      await loadDistritos(provinciaId);
     } catch (error) {
-      console.error('❌ Erro ao carregar distritos:', error);
+      showApiError('Erro ao carregar distritos', error);
     }
-  };
+  }, [loadDistritos]);
 
   /**
    * Handler para mudança de distrito - carrega bairros automaticamente
    */
-  const handleDistritoChange = async (distritoId, form) => {
+  const handleDistritoChange = useCallback(async (distritoId, targetForm) => {
+    targetForm.setFieldsValue({ bairro: undefined });
     try {
-      
-      // Limpar bairro quando distrito mudar
-      form.setFieldsValue({ bairro: undefined });
-      setPatientServiceBairros([]);
-      
-      // Carregar bairros do distrito selecionado do Patient Service
-      if (distritoId) {
-        setLoadingBairros(true);
-        try {
-          const token = localStorage.getItem('token');
-          const headers = {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          };
-
-          const response = await axios.get(`http://196.3.100.216/api/pacientes/bairros`, {
-            headers,
-            params: { distrito_id: distritoId }
-          });
-
-          const bairrosData = response.data?.data || response.data || [];
-          setPatientServiceBairros(bairrosData);
-        } catch (error) {
-          console.error('❌ Erro ao carregar bairros do Patient Service:', error);
-          message.error('Erro ao carregar bairros');
-        } finally {
-          setLoadingBairros(false);
-        }
-      }
+      await loadBairros(distritoId);
     } catch (error) {
-      console.error('❌ Erro ao carregar bairros:', error);
+      showApiError('Erro ao carregar bairros', error);
     }
-  };
+  }, [loadBairros]);
 
   // ❌ REMOVIDO: Sincronização com ClinicContext
   // Agora usa apenas apiPacientes do hook usePacientes que vem direto do backend
@@ -216,26 +331,72 @@ const CadastroPaciente = () => {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isTriagemModalVisible, setIsTriagemModalVisible] = useState(false);
   const [triagemPaciente, setTriagemPaciente] = useState(null);
+  const [criandoSolicitacaoTriagem, setCriandoSolicitacaoTriagem] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const carregarTriagensPendentesReais = async () => {
+      try {
+        const response = await triagemService.getTriagens({ status: 'aguardando_triagem', per_page: 1000 });
+        const lista = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.data?.data)
+            ? response.data.data
+            : Array.isArray(response)
+              ? response
+              : [];
+
+        if (mounted) {
+          setTriagensPendentes(lista);
+        }
+      } catch (error) {
+        if (mounted) {
+          setTriagensPendentes([]);
+        }
+      } finally {
+        if (mounted) {
+          setTriagensPendentesCarregadas(true);
+        }
+      }
+    };
+
+    const shouldRefreshTriagens = (keyPrefix = '') => (
+      !keyPrefix ||
+      keyPrefix.startsWith('clinical-data:') ||
+      keyPrefix.startsWith('pacientes:') ||
+      keyPrefix.startsWith('consultas:')
+    );
+
+    const handleCacheInvalidated = (event) => {
+      const keyPrefix = event?.detail?.keyPrefix || '';
+      if (shouldRefreshTriagens(keyPrefix)) {
+        carregarTriagensPendentesReais();
+      }
+    };
+
+    const unsubscribeClinicalEvents = subscribeClinicalEvents((event) => {
+      const keyPrefix = event?.payload?.keyPrefix || '';
+      if (shouldRefreshTriagens(keyPrefix)) {
+        carregarTriagensPendentesReais();
+      }
+    });
+
+    carregarTriagensPendentesReais();
+    window.addEventListener('request-cache-invalidated', handleCacheInvalidated);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('request-cache-invalidated', handleCacheInvalidated);
+      unsubscribeClinicalEvents();
+    };
+  }, []);
   const [urgenciaTriagem, setUrgenciaTriagem] = useState(null);
   const [observacoesTriagem, setObservacoesTriagem] = useState('');
   const [editingPaciente, setEditingPaciente] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [formValues, setFormValues] = useState({});
   const [activeTab, setActiveTab] = useState('1'); // Estado para controlar a aba ativa
-
-  // Estados locais para configurações carregadas do Patient Service (porta 8002)
-  const [patientServiceRacas, setPatientServiceRacas] = useState([]);
-  const [patientServiceTiposUtentes, setPatientServiceTiposUtentes] = useState([]);
-  const [patientServiceUnidadesOrganicas, setPatientServiceUnidadesOrganicas] = useState([]);
-  const [patientServiceTiposDocumentos, setPatientServiceTiposDocumentos] = useState([]);
-  const [patientServiceProvincias, setPatientServiceProvincias] = useState([]);
-  const [patientServiceDistritos, setPatientServiceDistritos] = useState([]);
-  const [patientServiceBairros, setPatientServiceBairros] = useState([]);
-  const [patientServiceGrausParentesco, setPatientServiceGrausParentesco] = useState([]);
-  const [loadingPatientServiceConfig, setLoadingPatientServiceConfig] = useState(false);
-  const [loadingDistritos, setLoadingDistritos] = useState(false);
-  const [loadingBairros, setLoadingBairros] = useState(false);
-
 
   // Estados para Utentes Autônomos
   const [isUtenteAutonomoModalVisible, setIsUtenteAutonomoModalVisible] = useState(false);
@@ -265,6 +426,32 @@ const CadastroPaciente = () => {
   const [metodosPagamento, setMetodosPagamento] = useState([]);
   const [tiposConsulta, setTiposConsulta] = useState([]); // Sempre inicializar como array
   const [loadingPagamentoConfig, setLoadingPagamentoConfig] = useState(false);
+  const [tiposExames, setTiposExames] = useState([]);
+  const [loadingOpcoesClinicas, setLoadingOpcoesClinicas] = useState(false);
+
+  useEffect(() => {
+    const carregarOpcoesClinicas = async () => {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      if (!token) return;
+
+      setLoadingOpcoesClinicas(true);
+      try {
+        const response = await axios.get(`${API_BASE}/pacientes/tipos-exame`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+        });
+        const payload = response.data?.data ?? response.data ?? [];
+        setTiposExames(Array.isArray(payload) ? payload : []);
+      } catch (error) {
+        notification.warning({
+          message: 'Tipos de exame não carregados',
+          description: getApiErrorDescription(error, 'Tente novamente.')
+        });
+      }
+      setLoadingOpcoesClinicas(false);
+    };
+
+    carregarOpcoesClinicas();
+  }, []);
 
   // Estados para o modal de pagamento de exames
   const [isPagamentoExameModalVisible, setIsPagamentoExameModalVisible] = useState(false);
@@ -289,11 +476,6 @@ const CadastroPaciente = () => {
   const [isHistoricoModalVisible, setIsHistoricoModalVisible] = useState(false);
   const [utenteHistorico, setUtenteHistorico] = useState(null);
 
-  // Estados para o modal de consulta de acompanhamento
-  const [isAcompanhamentoModalVisible, setIsAcompanhamentoModalVisible] = useState(false);
-  const [pacienteAcompanhamento, setPacienteAcompanhamento] = useState(null);
-  const [acompanhamentoForm] = Form.useForm();
-  
   // Estado para forçar re-renderização da tabela
   const [forceUpdate, setForceUpdate] = useState(0);
 
@@ -324,14 +506,13 @@ const CadastroPaciente = () => {
 
     setLoadingPagamentoConfig(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         return;
       }
 
 
-      // FALLBACK: Usar rotas separadas se rota consolidada falhar
-      const metodosResponse = await fetch('http://196.3.100.216/api/metodos-pagamento/', {
+      const metodosResponse = await fetch(`${API_BASE}/pacientes/metodos-pagamento`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -340,7 +521,7 @@ const CadastroPaciente = () => {
       });
 
       // Carregar tipos de consulta
-      const tiposResponse = await fetch('http://196.3.100.216/api/tipos-consulta/', {
+      const tiposResponse = await fetch(`${API_BASE}/pacientes/tipos-consulta`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -358,7 +539,8 @@ const CadastroPaciente = () => {
       }
 
       if (tiposResponse.ok) {
-        const tiposData = await tiposResponse.json();
+        const tiposJson = await tiposResponse.json();
+        const tiposData = tiposJson?.data ?? tiposJson ?? [];
         setTiposConsulta(Array.isArray(tiposData) ? tiposData : []);
       } else {
         setTiposConsulta([]);
@@ -367,6 +549,7 @@ const CadastroPaciente = () => {
     } catch (error) {
       setMetodosPagamento([]);
       setTiposConsulta([]);
+      showApiError('Erro ao carregar configurações de pagamento', error);
     } finally {
       setLoadingPagamentoConfig(false);
     }
@@ -385,7 +568,7 @@ const CadastroPaciente = () => {
     }
     
     // Primeiro, verificar se é estudante bolseiro (isento)
-    const tipoUtente = patientServiceTiposUtentes?.find(t => t.id === tipoUtenteId);
+    const tipoUtente = getTipoUtenteById(tipoUtenteId);
     if (tipoUtente?.codigo === 'EST-B') {
       return '0';
     }
@@ -399,16 +582,16 @@ const CadastroPaciente = () => {
       return tipoConsulta.valor_default.toString();
     }
     return null; // Não retornar valor fixo, forçar busca no backend
-  }, [tiposConsulta, patientServiceTiposUtentes]);
+  }, [tiposConsulta, getTipoUtenteById]);
 
   // Função para buscar valor da consulta com base no tipo de consulta e tipo de utente
   const buscarValorConsulta = useCallback(async (tipoConsultaId, tipoUtenteId) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         return buscarValorFallback(tipoConsultaId, tipoUtenteId);
       }
-      const verificarResponse = await fetch(`http://196.3.100.216/api/pacientes/verificar-preco-disponivel?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+      const verificarResponse = await fetch(`${API_BASE}/pacientes/verificar-preco-disponivel?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -420,7 +603,7 @@ const CadastroPaciente = () => {
         if (!check.disponivel) {
           throw new Error(`Preço da consulta não configurado no sistema: ${check.message}`);
         }
-        const response = await fetch(`http://196.3.100.216/api/pacientes/valor-consulta?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+        const response = await fetch(`${API_BASE}/pacientes/valor-consulta?tipo_consulta=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -439,7 +622,7 @@ const CadastroPaciente = () => {
           return buscarValorFallback(tipoConsultaId, tipoUtenteId);
         }
       } else {
-        const response = await fetch(`http://196.3.100.216/api/pacientes/valor-consulta?tipo_consulta_id=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
+        const response = await fetch(`${API_BASE}/pacientes/valor-consulta?tipo_consulta_id=${tipoConsultaId}&tipo_utente_id=${tipoUtenteId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -514,99 +697,23 @@ const CadastroPaciente = () => {
   }, [isMetodoIsencao, buscarValorConsulta]);
   
 
-
-      
-
-
-
   
-  // Função para carregar configurações do Patient Service (porta 8002)
-  const carregarConfiguracoesPatientService = useCallback(async () => {
-    if (patientServiceRacas.length > 0) {
-      return;
-    }
-
-    setLoadingPatientServiceConfig(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        message.error('Token de autenticação não encontrado');
-        return;
-      }
-
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      };
-
-      // Carregando configurações do Patient Service (porta 8002)...
-
-      // Carregar todas as configurações em paralelo
-      const [
-        racasRes, 
-        tiposUtentesRes, 
-        unidadesOrganicasRes, 
-        tiposDocumentosRes,
-        provinciasRes,
-        grausParentescoRes
-      ] = await Promise.all([
-        axios.get('http://196.3.100.216/api/racas/', { headers }),
-        axios.get('http://196.3.100.216/api/tipos-utentes/', { headers }),
-        axios.get('http://196.3.100.216/api/unidades-organicas/', { headers }),
-        axios.get('http://196.3.100.216/api/tipos-documentos/', { headers }),
-        axios.get('http://196.3.100.216/api/provincias/', { headers }),
-        axios.get('http://196.3.100.216/api/graus-parentesco/', { headers })
-      ]);
-
-      // Processar respostas (suporta tanto data.data quanto data)
-      const racasData = racasRes.data?.data || racasRes.data || [];
-      const tiposUtentesData = tiposUtentesRes.data?.data || tiposUtentesRes.data || [];
-      const unidadesOrganicasData = unidadesOrganicasRes.data?.data || unidadesOrganicasRes.data || [];
-      const tiposDocumentosData = tiposDocumentosRes.data?.data || tiposDocumentosRes.data || [];
-      const provinciasData = provinciasRes.data?.data || provinciasRes.data || [];
-      const grausParentescoData = grausParentescoRes.data?.data || grausParentescoRes.data || [];
-
-      setPatientServiceRacas(racasData);
-      setPatientServiceTiposUtentes(tiposUtentesData);
-      setPatientServiceUnidadesOrganicas(unidadesOrganicasData);
-      setPatientServiceTiposDocumentos(tiposDocumentosData);
-      setPatientServiceProvincias(provinciasData);
-      setPatientServiceGrausParentesco(grausParentescoData);
-
-      // Configurações carregadas do Patient Service
-
-    } catch (error) {
-      console.error('❌ Erro ao carregar configurações do Patient Service:', error);
-      message.error('Erro ao carregar configurações. Tente novamente.');
-    } finally {
-      setLoadingPatientServiceConfig(false);
-    }
-  }, [patientServiceRacas.length]);
-
-  // Carregar configurações do Patient Service quando o componente monta
-  useEffect(() => {
-    carregarConfiguracoesPatientService();
-  }, [carregarConfiguracoesPatientService]);
-
-  // 🔥 Carregar pacientes transferidos para especialidade da API
+  // Carregar pacientes transferidos para especialidade sempre da API
   const carregarPacientesTransferidosEspecialidade = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         setPacientesTransferidosEspecialidade([]);
         return;
       }
 
-      // Carregando pacientes transferidos para especialidade da porta 8002...
-
-      const response = await axios.get('http://196.3.100.216/api/pacientes/transferidos-especialidade', {
+      const response = await axios.get(`${API_BASE}/pacientes/transferidos-especialidade`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        timeout: 5000 // 5 segundos de timeout
+        timeout: 5000
       });
 
       // Extrair dados da resposta paginada do Laravel
@@ -798,18 +905,18 @@ const CadastroPaciente = () => {
 
   // Função para verificar o status atual do paciente
   const obterStatusPaciente = (paciente) => {
-    const pacienteId = paciente.id;
-
-    // Verificar se está em triagem pendente
+    // Verificar se está em triagem pendente. Não comparar t.id com paciente.id:
+    // t.id é o ID da solicitação de triagem, não o ID do paciente.
     const emTriagem = triagensPendentes.find(t =>
-      t.id === pacienteId || t.pacienteId === pacienteId
+      matchesPaciente(t, paciente) && isActiveWorkflowStatus(t.status || t.estado || t.situacao)
     );
 
     if (emTriagem) {
+      const workflow = getWorkflowStatus(emTriagem);
       return {
-        status: 'em_triagem',
-        texto: 'Em Triagem',
-        cor: '#1890ff',
+        status: workflow.key,
+        texto: workflow.label,
+        cor: workflow.color,
         desabilitado: true,
         urgencia: emTriagem.estadoUrgencia
       };
@@ -817,24 +924,47 @@ const CadastroPaciente = () => {
 
     // Verificar se está em consulta pendente
     const emConsulta = consultasPendentes.find(c =>
-      c.id === pacienteId || c.pacienteId === pacienteId
+      matchesPaciente(c, paciente) && isActiveWorkflowStatus(c.status || c.estado || c.situacao || 'em_consulta')
     );
 
     if (emConsulta) {
+      const workflow = getWorkflowStatus(emConsulta);
       return {
-        status: 'em_consulta',
-        texto: 'Em Consulta',
-        cor: '#52c41a',
+        status: workflow.key,
+        texto: workflow.label,
+        cor: workflow.color,
         desabilitado: true,
         especialidade: emConsulta.especialidade,
-        medico: emConsulta.medicoNome
+        medico: emConsulta.medicoNome || emConsulta.medico
+      };
+    }
+
+    const workflowPaciente = getWorkflowStatus(paciente);
+    const statusPersistido = paciente?.status || paciente?.estadoAtual || paciente?.estado_atual;
+    const statusTriagemPersistidoSemFilaReal = ['aguardando_triagem', 'em_triagem'].includes(workflowPaciente.key)
+      && triagensPendentesCarregadas
+      && !emTriagem;
+    const deveRespeitarStatusPersistido = Boolean(statusPersistido)
+      && !['ativo', 'disponivel'].includes(workflowPaciente.key)
+      && !statusTriagemPersistidoSemFilaReal;
+
+    if (deveRespeitarStatusPersistido) {
+      return {
+        status: workflowPaciente.key,
+        texto: workflowPaciente.label,
+        cor: workflowPaciente.color,
+        desabilitado: workflowPaciente.active || workflowPaciente.terminal,
+        motivo: paciente?.motivo,
+        observacao: paciente?.observacoes || paciente?.observacao,
+        especialidade: paciente?.especialidade,
+        medico: paciente?.medico || paciente?.medicoNome
       };
     }
 
     // NOVA LÓGICA: Verificar se tem consulta finalizada mas ciclo não terminado
     // (consultas apenas com exames que não terminaram o ciclo)
     const consultaComCicloAberto = consultasRealizadas.find(c => 
-      (c.id === pacienteId || c.pacienteId === pacienteId) &&
+      matchesPaciente(c, paciente) &&
       c.deveTerminarCiclo === false && // Ciclo não foi terminado
       c.deveFinalizarConsulta === true // Mas a consulta foi finalizada
     );
@@ -842,13 +972,13 @@ const CadastroPaciente = () => {
     // Verificar se paciente está aguardando exames solicitados
     // CORREÇÃO: Melhorar ainda mais a detecção de pacientes aguardando exames
     const consultaAguardandoExames = consultasPendentes.find(c =>
-      (c.id === pacienteId || c.pacienteId === pacienteId) &&
+      matchesPaciente(c, paciente) &&
       (c.aguardandoExames === true || c.statusExames === 'pendente' || c.examesEmAndamento === true)
     );
 
     // Verificar também nas consultas realizadas com vários status possíveis
     const consultaRealizadaComExamesPendentes = consultasRealizadas.find(c =>
-      (c.id === pacienteId || c.pacienteId === pacienteId) && (
+      matchesPaciente(c, paciente) && (
         c.aguardandoExames === true || 
         c.status === 'aguardando_exames' || 
         c.status === 'finalizada_com_exames' ||
@@ -861,7 +991,7 @@ const CadastroPaciente = () => {
     // Verificar também nas triagens realizadas se existem exames concluídos
     // que estão retornando para consulta
     const examesConcluidos = triagensRealizadas.find(t =>
-      (t.id === pacienteId || t.pacienteId === pacienteId) && (
+      matchesPaciente(t, paciente) && (
         t.status === 'exames_concluidos' &&
         t.resultadosExames && 
         t.retornoConsulta === true &&
@@ -875,7 +1005,7 @@ const CadastroPaciente = () => {
 
     // Verificar também se o paciente está em consulta com retorno de exames
     const consultaRetornoExames = consultasPendentes.find(c =>
-      (c.id === pacienteId || c.pacienteId === pacienteId) && 
+      matchesPaciente(c, paciente) && 
       c.retornoComExames === true
     );
     
@@ -913,6 +1043,16 @@ const CadastroPaciente = () => {
       };
     }
 
+    if (paciente.statusPagamentoConsulta !== 'pago') {
+      const workflow = getWorkflowStatus(paciente, { forceKey: 'pagamento_pendente' });
+      return {
+        status: workflow.key,
+        texto: workflow.label,
+        cor: workflow.color,
+        desabilitado: false,
+      };
+    }
+
     // Verificar se pode fazer nova consulta
     const verificacao = podeRealizarNovaConsulta(paciente);
     if (!verificacao.pode) {
@@ -929,9 +1069,233 @@ const CadastroPaciente = () => {
     return {
       status: 'disponivel',
       texto: 'Triagem',
-      cor: '#28a745',
+      cor: '#52c41a',
       desabilitado: false
     };
+  };
+
+  const getTriagemPaciente = (paciente) => (
+    triagensPendentes.find((triagem) => matchesPaciente(triagem, paciente)) ||
+    null
+  );
+
+  const podeGerarBoletimConsulta = (paciente) => {
+    const statusPaciente = obterStatusPaciente(paciente);
+    const statusAtual = statusPaciente.status;
+
+    if (!statusAtual || ['ativo', 'disponivel', 'inativo'].includes(statusAtual)) {
+      return false;
+    }
+
+    const triagemAtiva = Boolean(getTriagemPaciente(paciente));
+    const consultaAtiva = consultasPendentes.some(c =>
+      matchesPaciente(c, paciente) && isActiveWorkflowStatus(c.status || c.estado || c.situacao || 'em_consulta')
+    );
+    const pagamento = paciente?.ultimoPagamento || paciente?.dados_pagamento || paciente?.pagamento || paciente?.pagamento_consulta || {};
+    const statusPagamento = String(
+      paciente?.statusPagamentoConsulta ||
+      paciente?.status_pagamento ||
+      pagamento?.status ||
+      pagamento?.estado_pagamento ||
+      ''
+    ).toLowerCase();
+    const temPagamentoConfirmado = ['pago', 'isento'].some(status => statusPagamento.includes(status)) ||
+      pagamento?.isencao_aplicada === true ||
+      Boolean(pagamento?.numero_recibo || pagamento?.referencia || paciente?.referenciaPagamento);
+
+    const statusComProcesso = [
+      'aguardando_triagem',
+      'em_triagem',
+      'triagem_concluida',
+      'aguardando_consulta',
+      'em_consulta',
+      'em_consulta_retorno',
+      'aguardando_prescricao',
+      'aguardando_exames',
+      'retorno_exames'
+    ].includes(statusAtual);
+
+    return triagemAtiva || consultaAtiva || (statusComProcesso && temPagamentoConfirmado);
+  };
+
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const gerarBoletimConsulta = (paciente) => {
+    const statusPaciente = obterStatusPaciente(paciente);
+    const triagem = getTriagemPaciente(paciente);
+    const pagamento = paciente?.ultimoPagamento || paciente?.dados_pagamento || paciente?.pagamento || paciente?.pagamento_consulta || {};
+    const nomeCompleto = [paciente?.nome, paciente?.apelido].filter(Boolean).join(' ') || 'Utente';
+    const nid = paciente?.nid || paciente?.NID || '-';
+    const prioridade = triagem?.prioridade
+      || triagem?.prioridade_atendimento
+      || triagem?.classificacao_risco
+      || triagem?.urgencia
+      || triagem?.estadoUrgencia
+      || triagem?.estado_urgencia
+      || statusPaciente?.urgencia
+      || paciente?.prioridade
+      || paciente?.urgencia
+      || '-';
+    const estadoUtente = statusPaciente?.texto || getWorkflowStatus(paciente).label || paciente?.status || '-';
+    const dataTriagem = triagem?.created_at || triagem?.data_criacao || triagem?.dataTriagem || new Date();
+    const dataFormatada = dayjs(dataTriagem).isValid()
+      ? dayjs(dataTriagem).format('DD/MM/YYYY HH:mm')
+      : dayjs().format('DD/MM/YYYY HH:mm');
+
+    const tipoConsultaId = paciente?.tipoConsultaId || paciente?.tipo_consulta_id || paciente?.tipoConsultaRegular || pagamento?.tipo_consulta_id;
+    const tipoConsulta = tiposConsulta.find((tipo) => sameId(tipo.id, tipoConsultaId) || sameId(tipo.codigo, tipoConsultaId));
+    const tipoConsultaNome = paciente?.tipoConsultaNome || paciente?.tipo_consulta_nome || tipoConsulta?.nome || tipoConsulta?.descricao || tipoConsultaId || 'Consulta Geral';
+
+    const metodoPagamentoId = paciente?.metodoPagamentoRegular || paciente?.metodo_pagamento_id || pagamento?.metodo_pagamento_id || pagamento?.metodo_pagamento?.id || pagamento?.metodo_pagamento;
+    const metodoPagamento = metodosPagamento.find((metodo) => sameId(metodo.id, metodoPagamentoId) || sameId(metodo.codigo, metodoPagamentoId));
+    const pagamentoIsento = [
+      paciente?.statusPagamentoConsulta,
+      paciente?.status_pagamento,
+      pagamento?.status,
+      pagamento?.estado_pagamento,
+      pagamento?.metodo,
+      pagamento?.metodo_pagamento_nome,
+      pagamento?.metodo_pagamento?.nome,
+      metodoPagamento?.nome,
+      metodoPagamento?.codigo,
+    ].some((value) => String(value || '').toLowerCase().includes('isen')) || pagamento?.isencao_aplicada === true;
+
+    const metodoPagamentoNome = pagamentoIsento
+      ? 'Isento'
+      : (paciente?.metodoPagamentoNome
+        || pagamento?.metodo_pagamento_nome
+        || pagamento?.metodo
+        || pagamento?.metodo_pagamento?.nome
+        || metodoPagamento?.nome
+        || metodoPagamentoId
+        || '-');
+
+    const valorPago = paciente?.valorConsultaRegular ?? paciente?.valor_consulta ?? pagamento?.valor ?? pagamento?.valor_pago ?? pagamento?.valor_consulta ?? 0;
+    const referenciaPagamento = paciente?.referenciaPagamento
+      || pagamento?.numero_recibo
+      || pagamento?.referencia
+      || pagamento?.referencia_pagamento
+      || pagamento?.numero_referencia
+      || pagamento?.codigo_pagamento
+      || '-';
+    const dataPagamento = paciente?.dataPagamentoConsulta
+      || paciente?.data_pagamento
+      || pagamento?.data_pagamento
+      || pagamento?.data_pagamento_formatada
+      || pagamento?.created_at
+      || paciente?.updated_at;
+    const dataPagamentoFormatada = dataPagamento && dayjs(dataPagamento, ['YYYY-MM-DD HH:mm:ss', 'DD/MM/YYYY HH:mm:ss', 'DD/MM/YYYY HH:mm'], true).isValid()
+      ? dayjs(dataPagamento, ['YYYY-MM-DD HH:mm:ss', 'DD/MM/YYYY HH:mm:ss', 'DD/MM/YYYY HH:mm']).format('DD/MM/YYYY HH:mm')
+      : (dataPagamento && dayjs(dataPagamento).isValid() ? dayjs(dataPagamento).format('DD/MM/YYYY HH:mm') : '-');
+    const estadoPagamento = pagamentoIsento ? 'Isento' : (paciente?.statusPagamentoConsulta || paciente?.status_pagamento || pagamento?.estado_pagamento || pagamento?.status || 'Pago');
+
+    const janela = window.open('', '_blank', 'width=900,height=1000');
+    if (!janela) {
+      notification.warning({
+        message: 'Não foi possível abrir o boletim',
+        description: 'Autorize pop-ups para esta página e tente novamente.'
+      });
+      return;
+    }
+
+    const renderVia = (tituloVia) => `
+      <section class="copy">
+        <div class="header">
+          <img class="logo" src="/assets/images/UEM.png" alt="Logo UEM" />
+          <div class="clinic-block">
+            <h1>BOLETIM DE CONSULTA</h1>
+            <p>Universidade Eduardo Mondlane - Faculdade de Medicina</p>
+            <p>Clínica Universitária</p>
+            <p>Av. Salvador Allende, 702, Maputo - Moçambique</p>
+            <p>Tel: +258 21 428076 | E-mail: clinica@medicina.uem.mz</p>
+          </div>
+          <div class="copy-badge">${escapeHtml(tituloVia)}</div>
+        </div>
+
+        <div class="section-title">Dados do Utente</div>
+        <div class="grid">
+          <div class="field"><span>NID</span><strong>${escapeHtml(nid)}</strong></div>
+          <div class="field"><span>Utente</span><strong>${escapeHtml(nomeCompleto)}</strong></div>
+          <div class="field"><span>Tipo de Utente</span><strong>${escapeHtml(getTipoUtenteNome(paciente) || '-')}</strong></div>
+          <div class="field"><span>Estado do Utente</span><strong>${escapeHtml(estadoUtente)}</strong></div>
+        </div>
+
+        <div class="section-title">Consulta e Triagem</div>
+        <div class="grid">
+          <div class="field"><span>Tipo de Consulta</span><strong>${escapeHtml(tipoConsultaNome)}</strong></div>
+          <div class="field"><span>Prioridade</span><strong>${escapeHtml(prioridade)}</strong></div>
+          <div class="field"><span>Data/Hora da Triagem</span><strong>${escapeHtml(dataFormatada)}</strong></div>
+          <div class="field"><span>Observações</span><strong>${escapeHtml(triagem?.observacoes || 'Sem observações registadas.')}</strong></div>
+        </div>
+
+        <div class="section-title">Informações de Pagamento</div>
+        <div class="grid">
+          <div class="field"><span>Estado do Pagamento</span><strong>${escapeHtml(estadoPagamento)}</strong></div>
+          <div class="field"><span>Método de Pagamento</span><strong>${escapeHtml(metodoPagamentoNome)}</strong></div>
+          <div class="field"><span>Valor Pago</span><strong>MT ${escapeHtml(valorPago)}</strong></div>
+          <div class="field"><span>Referência</span><strong>${escapeHtml(referenciaPagamento)}</strong></div>
+          <div class="field"><span>Data/Hora do Pagamento</span><strong>${escapeHtml(dataPagamentoFormatada)}</strong></div>
+          <div class="field"><span>Emitido em</span><strong>${escapeHtml(dayjs().format('DD/MM/YYYY HH:mm'))}</strong></div>
+        </div>
+
+        <div class="signature-grid">
+          <div><div class="line"></div><strong>Recepção</strong></div>
+          <div><div class="line"></div><strong>Enfermagem / Triagem</strong></div>
+        </div>
+      </section>
+    `;
+
+    janela.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Boletim de Consulta - ${escapeHtml(nid)}</title>
+          <style>
+            @page { size: A4 landscape; margin: 7mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; color: #1f2937; margin: 0; padding: 0; line-height: 1.18; font-size: 10px; }
+            .toolbar { text-align: right; margin-bottom: 5px; }
+            .toolbar button { padding: 6px 12px; border: 0; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; }
+            .sheet { width: 100%; height: 196mm; display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+            .copy { border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 8px; height: 196mm; overflow: hidden; }
+            .copy + .copy { border-left: 2px dashed #9ca3af; }
+            .header { display: flex; align-items: center; border-bottom: 1.5px solid #333; padding-bottom: 5px; margin-bottom: 5px; gap: 8px; }
+            .logo { width: 48px; height: 48px; object-fit: contain; }
+            .clinic-block { flex: 1; text-align: center; }
+            .clinic-block h1 { font-size: 13px; margin: 0 0 2px; color: #111827; }
+            .clinic-block p { margin: 0; font-size: 8.5px; color: #444; }
+            .copy-badge { border: 1px solid #2563eb; color: #2563eb; font-weight: 700; border-radius: 999px; padding: 3px 7px; font-size: 10px; }
+            .section-title { margin: 5px 0 3px; padding: 3px 6px; background: #f3f4f6; border-left: 3px solid #1890ff; font-weight: 700; font-size: 9px; text-transform: uppercase; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+            .field { border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px 5px; min-height: 25px; overflow: hidden; }
+            .field span { display: block; color: #6b7280; font-size: 8px; text-transform: uppercase; margin-bottom: 1px; }
+            .field strong { font-size: 9.3px; color: #111827; }
+            .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; text-align: center; margin-top: 9px; font-size: 9px; }
+            .line { height: 20px; border-bottom: 1px solid #333; margin-bottom: 3px; }
+            @media print {
+              body { padding: 0; }
+              .toolbar { display: none; }
+              .sheet, .copy { break-inside: avoid; page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="toolbar"><button onclick="window.print()">Imprimir</button></div>
+          <main class="sheet">
+            ${renderVia('Original')}
+            ${renderVia('Cópia')}
+          </main>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `);
+    janela.document.close();
+    janela.focus();
   };
 
   // Função para resetar paciente ao estado inicial após ciclo terminado
@@ -1080,193 +1444,8 @@ const CadastroPaciente = () => {
     setConsultasPendentes(updatedConsultasPendentes);
   };
 
-  // Monitorar consultas realizadas para detectar ciclos terminados
-  // React.useEffect(() => {
-    
-  //   if (consultasRealizadas && consultasRealizadas.length > 0) {
 
-  //     // Verificar as consultas que terminam o ciclo e que ainda não foram processadas
-  //     const consultasTerminadas = consultasRealizadas.filter(consulta => {
-  //       const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
-        
-  //       // Verificar se a consulta já foi processada
-  //       if (consultasProcessadas.has(consultaId)) {
-  //         return false;
-  //       }
-        
-  //       // Verificar se o paciente ainda está em processo de exames
-  //       const pacienteId = consulta.id || consulta.pacienteId;
-        
-  //       // CORREÇÃO: Verificar em triagensRealizadas se tem exames não consultados
-  //       const temExamesNaoConsultados = triagensRealizadas.some(t => 
-  //         (t.id === pacienteId || t.pacienteId === pacienteId) &&
-  //         t.status === 'exames_concluidos' &&
-  //         t.resultadosExames &&
-  //         !t.jaConsultado
-  //       );
-        
-  //       // CORREÇÃO 2: Se a consulta atual tem retornoComExames=true, significa que esta consulta
-  //       // é justamente para avaliar os resultados dos exames, então devemos permitir terminar o ciclo
-  //       if (temExamesNaoConsultados && !consulta.retornoComExames) {
-  //         return false;
-  //       }
-        
-  //       // Se a consulta é de retorno com exames, devemos atualizar os exames para jaConsultado=true
-  //       if (consulta.retornoComExames) {
-  //       }
-        
-  //       // Nova lógica: usar o campo deveTerminarCiclo enviado pelo ConsultaDetalhadaModal
-  //       // Se deveTerminarCiclo for explicitamente false, NÃO resetar o paciente
-  //       // Se não existir o campo, usar a lógica anterior como fallback
-  //       let deveFinalizar = false;
-        
-  //       if (consulta.hasOwnProperty('deveTerminarCiclo')) {
-  //         // Nova lógica: usar o campo explícito do modal
-  //         // CORREÇÃO: Se for uma consulta de retorno com exames e tem prescrição, deve terminar o ciclo
-  //         if (consulta.retornoComExames && consulta.temPrescricao) {
-  //           deveFinalizar = true;
-  //         } else {
-  //           deveFinalizar = consulta.deveTerminarCiclo;
-          
-  //           // Log específico para consultas que não terminam ciclo
-  //           if (consulta.deveTerminarCiclo === false) {
-  //           }
-  //         }
-  //       } else {
-  //         // Lógica anterior como fallback para consultas sem o novo campo
-  //         // CORREÇÃO: Verificar explicitamente se é um retorno com exames
-  //         if (consulta.retornoComExames && consulta.temPrescricao) {
-  //           deveFinalizar = true;
-  //         } else {
-  //           deveFinalizar = (
-  //             (consulta.status === 'alta' || 
-  //              consulta.status === 'obito' || 
-  //              consulta.status === 'transferido' ||
-  //              (consulta.status === 'finalizada' && (consulta.prescricoes?.length > 0 || consulta.dataAlta))
-  //             )
-  //           );
-  //         }
-  //       }
-        
-  //       // Verificar se a consulta foi resultado de um retorno com exames
-  //       if (consulta.retornoComExames === true && deveFinalizar) {
-  //       }
-        
-  //       return deveFinalizar;
-  //     });
-
-  //     // Também precisamos processar consultas que foram finalizadas mas não terminaram o ciclo
-  //     // CORREÇÃO: Melhorar a detecção de consultas com ciclo aberto (incluindo exames pendentes)
-  //     const consultasComCicloAberto = consultasRealizadas.filter(consulta => {
-  //       const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
-        
-  //       // Verificar várias condições possíveis para considerar como ciclo aberto
-  //       const comCicloAberto = (
-  //         // Condição original
-  //         (consulta.hasOwnProperty('deveTerminarCiclo') && consulta.deveTerminarCiclo === false && consulta.deveFinalizarConsulta === true) ||
-  //         // Consultas com exames pendentes
-  //         (consulta.aguardandoExames === true) ||
-  //         // Consultas com status específico de exames
-  //         (consulta.status === 'aguardando_exames' || consulta.status === 'finalizada_com_exames') ||
-  //         // Consultas que têm exames mas não têm prescrições
-  //         (consulta.temExames === true && consulta.temPrescricao !== true) ||
-  //         // Consultas com tipo de finalização específico para exames
-  //         (consulta.tipoFinalizacao === 'so_exames')
-  //       );
-        
-  //       return comCicloAberto && !consultasProcessadas.has(consultaId);
-  //     });
-      
-  //     // CORREÇÃO: Adicionar log detalhado sobre pacientes com ciclo aberto
-  //     if (consultasComCicloAberto.length > 0) {
-  //     }
-
-  //     if (consultasTerminadas.length > 0) {
-  //       const novasConsultasProcessadas = new Set(consultasProcessadas);
-
-  //       consultasTerminadas.forEach(consulta => {
-  //         // CORREÇÃO: Usar NID quando disponível como identificador primário
-  //         const nidConsulta = consulta.nid;
-  //         const pacienteId = consulta.id || consulta.pacienteId;
-  //         const consultaId = `${nidConsulta || pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
-
-  //         if (pacienteId || nidConsulta) {
-  //           // CORREÇÃO: Verificar se o paciente ainda não foi resetado (se ainda tem dados do ciclo anterior)
-  //           // Priorizar busca por NID, depois tentar por IDs numéricos
-  //           const pacienteAtual = pacientes.find(p => 
-  //             (nidConsulta && p.nid === nidConsulta) || 
-  //             p.id === pacienteId || 
-  //             p.pacienteId === pacienteId);
-            
-  //           if (!pacienteAtual) {
-  //             // Log para diagnóstico - mostrar todos os pacientes com suas IDs para debugging
-  //           }
-
-  //           // Só resetar se paciente existe e está em ciclo ativo
-  //           if (pacienteAtual && pacienteAtual.statusPagamentoConsulta === 'pago') {
-  //             // Detectar se a consulta teve prescrição (para qualquer tipo de status)
-  //             const temPrescricaoDetected = consulta.temPrescricao || 
-  //                                         (consulta.prescricoes && consulta.prescricoes.length > 0) ||
-  //                                         consulta.dataAlta; // dataAlta indica que houve alta com tratamento
-
-  //             // Criar objeto de consulta padronizado para o reset
-  //             const consultaPadronizada = {
-  //               ...consulta,
-  //               temPrescricao: temPrescricaoDetected,
-  //               dataLimiteAcompanhamento: temPrescricaoDetected ? 
-  //                 new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString() : null
-  //             };
-
-  //             // Resetar o paciente ao estado inicial (passando dados da consulta para acompanhamento)
-  //             resetarPacienteEstadoInicial(pacienteId, consulta.dataConsulta || consulta.dataFinalizacao, consultaPadronizada);
-
-  //             // Mostrar mensagem informativa sobre a necessidade de novo pagamento
-  //             if (consulta.status === 'alta') {
-  //               const mensagemBase = `✅ Paciente ${consulta.nome} recebeu alta médica.`;
-  //               const mensagemAcompanhamento = consulta.temPrescricao ? 
-  //                 ' Consulta de acompanhamento disponível por 7 dias.' : '';
-  //               message.success(mensagemBase + mensagemAcompanhamento);
-  //             } else if (consulta.status === 'finalizada' && temPrescricaoDetected) {
-  //               const mensagemBase = `✅ Consulta finalizada para ${consulta.nome}.`;
-  //               const mensagemAcompanhamento = ' Consulta de acompanhamento disponível por 7 dias.';
-  //               message.success(mensagemBase + mensagemAcompanhamento);
-  //             } else if (consulta.status === 'obito') {
-  //               message.info(`📋 Óbito registrado para paciente ${consulta.nome}. Registro mantido para histórico médico.`);
-  //             } else if (consulta.status === 'transferido') {
-  //               message.success(`🏥 Paciente ${consulta.nome} transferido para outro hospital. Ciclo terminado - disponível para nova consulta (requer novo pagamento).`);
-  //             }
-  //           } else {
-  //           }
-
-  //           // Marcar esta consulta como processada
-  //           novasConsultasProcessadas.add(consultaId);
-  //         }
-  //       });
-
-  //       // Atualizar o estado de consultas processadas
-  //       setConsultasProcessadas(novasConsultasProcessadas);
-  //     }
-
-  //     // Processar consultas com ciclo aberto (apenas marcar como processadas)
-  //     if (consultasComCicloAberto.length > 0) {
-  //       const consultasParaMarcar = new Set(consultasProcessadas);
-        
-  //       consultasComCicloAberto.forEach(consulta => {
-  //         const consultaId = `${consulta.id || consulta.pacienteId}-${consulta.status}-${consulta.dataConsulta || consulta.dataFinalizacao}`;
-          
-  //         // Mostrar mensagem informativa
-  //         message.info(`📋 Consulta de ${consulta.nome} finalizada com exames - paciente permanece disponível para prescrições.`);
-          
-  //         // Marcar como processada
-  //         consultasParaMarcar.add(consultaId);
-  //       });
-        
-  //       setConsultasProcessadas(consultasParaMarcar);
-  //     }
-  //   }
-  // }, [consultasRealizadas, consultasProcessadas]);
-
-  const openEditModal = (paciente) => {
+  const openEditModal = async (paciente) => {
     setEditingPaciente(paciente);
     // Garantir que os campos de data sejam dayjs ou null
     const pacienteProcessado = {
@@ -1285,101 +1464,45 @@ const CadastroPaciente = () => {
     if (patientServiceRacas.length === 0) {
       carregarConfiguracoesPatientService();
     }
+
+    const provinciaId = paciente.provincia_id ?? paciente.provinciaId;
+    const distritoId = paciente.distrito_id ?? paciente.distritoId;
+    try {
+      if (provinciaId) await loadDistritos(provinciaId);
+      if (distritoId) await loadBairros(distritoId);
+    } catch (error) {
+      showApiError('Erro ao carregar a localização do paciente', error);
+    }
   };
   
   const handleCreate = async (values) => {
     try {
-      let configBackend = null;
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          message.error('Token de autenticação não encontrado. Faça login novamente.');
-          return;
-        }
-        
-        const headers = {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        };
-        
-        // Carregar todas as configurações em paralelo
-        const [
-          racasRes, 
-          tiposUtentesRes, 
-          unidadesOrganicasRes, 
-          tiposDocumentosRes,
-          provinciasRes,
-          grausParentescoRes
-        ] = await Promise.all([
-          axios.get('http://196.3.100.216/api/pacientes/racas', { headers }),
-          axios.get('http://196.3.100.216/api/pacientes/tipos-utentes', { headers }),
-          axios.get('http://196.3.100.216/api/pacientes/unidades-organicas', { headers }),
-          axios.get('http://196.3.100.216/api/pacientes/tipos-documentos', { headers }),
-          axios.get('http://196.3.100.216/api/pacientes/provincias', { headers }),
-          axios.get('http://196.3.100.216/api/pacientes/graus-parentesco', { headers })
-        ]);
-        
-        // Processar respostas (tentar diferentes estruturas de resposta)
-        configBackend = {
-          racas: racasRes.data?.data || racasRes.data || [],
-          tipos_utentes: tiposUtentesRes.data?.data || tiposUtentesRes.data || [],
-          unidades_organicas: unidadesOrganicasRes.data?.data || unidadesOrganicasRes.data || [],
-          tipos_documentos: tiposDocumentosRes.data?.data || tiposDocumentosRes.data || [],
-          provincias: provinciasRes.data?.data || provinciasRes.data || [],
-          graus_parentesco: grausParentescoRes.data?.data || grausParentescoRes.data || []
-        };
-        
-        console.log('✅ Configurações carregadas das rotas individuais:', {
-          totalRacas: configBackend.racas?.length || 0,
-          totalTiposUtentes: configBackend.tipos_utentes?.length || 0,
-          totalUnidades: configBackend.unidades_organicas?.length || 0,
-          totalTiposDoc: configBackend.tipos_documentos?.length || 0,
-          totalProvincias: configBackend.provincias?.length || 0,
-          totalGrausParentesco: configBackend.graus_parentesco?.length || 0,
-          racas: configBackend.racas?.map(r => `${r.id}: ${r.nome}`) || []
+      if (loadingPatientServiceConfig) {
+        notification.info({
+          message: 'Dados do formulário ainda estão a carregar',
+          description: 'Aguarde alguns instantes antes de concluir o cadastro.'
         });
-        
-        if (!configBackend.racas || configBackend.racas.length === 0) {
-          throw new Error('Nenhuma raça foi carregada do backend');
-        }
-      } catch (error) {
-        console.error('❌ Erro ao carregar configurações do backend:', error);
-        console.error('❌ Detalhes do erro:', error.response?.data || error.message);
-        message.error('Erro ao carregar configurações. Tente novamente.');
         return;
       }
-      
-      // Converter tipo de utente para ID (se necessário)
-      console.log('🔍 VERIFICAÇÃO INICIAL - values.tipoUtente:', {
-        tipoUtente: values.tipoUtente,
-        tipo: typeof values.tipoUtente,
-        isUndefined: values.tipoUtente === undefined,
-        todosOsCampos: Object.keys(values)
-      });
-      
-      let tipoUtenteId = values.tipoUtente;
-      if (typeof values.tipoUtente === 'string') {
-        // Usar mapeamento manual
-        const mapeamentoTipoUtente = {
-          'estudanteNaoBolseiro': 1,
-          'estudanteBolseiro': 2,  
-          'estudanteMestrado': 3,
-          'estudanteDoutoramento': 4,
-          'investigador': 5,
-          'docente': 6,
-          'funcionario': 7,
-          'familiarDocente': 8,
-          'familiarFuncionario': 9,
-          'familiarInvestigador': 10,
-          'comunidade': 11
-        };
-        tipoUtenteId = mapeamentoTipoUtente[values.tipoUtente];
-        console.log(`🔄 Convertendo tipoUtente "${values.tipoUtente}" para ID: ${tipoUtenteId}`);
-      } else if (typeof values.tipoUtente === 'number') {
-        console.log(`✅ tipoUtente já é número: ${values.tipoUtente}`);
-      } else if (values.tipoUtente === undefined) {
-        console.warn('⚠️ tipoUtente NÃO FOI FORNECIDO no formulário');
+
+      const configBackend = {
+        racas: patientServiceRacas,
+        tipos_utentes: patientServiceTiposUtentes,
+        unidades_organicas: patientServiceUnidadesOrganicas,
+        tipos_documentos: patientServiceTiposDocumentos,
+        provincias: patientServiceProvincias,
+        graus_parentesco: patientServiceGrausParentesco
+      };
+      const tipoUtenteId = values.tipoUtente === undefined
+        ? null
+        : Number(values.tipoUtente);
+
+      if (configBackend.racas.length === 0) {
+        notification.error({
+          message: 'Não é possível concluir o cadastro',
+          description: 'A lista de raças não foi carregada. Atualize os dados do formulário e tente novamente.'
+        });
+        return;
       }
       
       // 🔥 IMPORTANTE: Criar um objeto COMPLETAMENTE NOVO para evitar misturar camelCase e snake_case
@@ -1389,7 +1512,19 @@ const CadastroPaciente = () => {
       // ==================== INFORMAÇÕES PESSOAIS ====================
       // NID (opcional) - Se fornecido, usar o valor do usuário; senão, backend auto-gera
       if (values.nid?.trim()) {
-        dadosPaciente.nid = values.nid.trim();
+        const nidNormalizado = values.nid.trim();
+        const anoNid = getNidYear(nidNormalizado);
+
+        const anoAtual = getCurrentYear();
+        if (anoNid && anoNid > anoAtual) {
+          notification.warning({
+            message: 'Ano do NID inválido',
+            description: `O ano do NID não pode ser superior a ${anoAtual}. Corrija o NID ou deixe o campo vazio para geração automática.`
+          });
+          return;
+        }
+
+        dadosPaciente.nid = nidNormalizado;
         console.log('✅ NID fornecido manualmente:', dadosPaciente.nid);
       } else {
         console.log('ℹ️ NID não fornecido - será gerado automaticamente pelo backend');
@@ -1457,6 +1592,11 @@ const CadastroPaciente = () => {
           }
           
           if (dataFormatada && dataFormatada !== 'Invalid date') {
+            if (!dayjs(dataFormatada).isBefore(dayjs().startOf('day'), 'day')) {
+              message.error('A data de nascimento deve ser anterior à data de hoje.');
+              return;
+            }
+
             dadosPaciente.data_nascimento = dataFormatada;
             console.log('✅ data_nascimento CONFIRMADA:', dadosPaciente.data_nascimento);
           } else {
@@ -1524,12 +1664,6 @@ const CadastroPaciente = () => {
       
       // � NOVA ABORDAGEM: Usar configurações já carregadas do Configuration Service (porta 8004)
       
-      // Verificar se as configurações estão carregadas
-      if (loadingConfiguracoes) {
-        message.warning('Aguarde... Configurações ainda estão sendo carregadas.');
-        return;
-      }
-      
       // Usar dados já carregados do Configuration Service
       // REMOVIDO: Usar configurações do frontend, agora usando do backend
       
@@ -1549,7 +1683,7 @@ const CadastroPaciente = () => {
         const racaId = parseInt(values.raca);
         
         // Buscar raça exata no backend
-        const racaExiste = racasValidasBackend?.find(r => r.id === racaId);
+        const racaExiste = racasValidasBackend?.find(r => sameId(r.id, racaId));
         
         
         if (racaExiste) {
@@ -1560,7 +1694,10 @@ const CadastroPaciente = () => {
           console.error('❌ ID procurado:', racaId);
           console.error('❌ IDs disponíveis:', racasValidasBackend?.map(r => r.id));
           
-          message.error(`Erro: Raça com ID ${racaId} não é válida. Por favor, selecione uma raça da lista disponível.`);
+          notification.warning({
+            message: 'Raça inválida',
+            description: 'Selecione uma raça disponível na lista do formulário.'
+          });
           return; // BLOQUEAR criação se raça for inválida
         }
       } else {
@@ -1578,7 +1715,10 @@ const CadastroPaciente = () => {
           console.error('❌ Nome procurado:', values.raca);
           console.error('❌ Nomes disponíveis:', racasValidasBackend?.map(r => r.nome));
           
-          message.error(`Erro: Raça "${values.raca}" não é válida. Por favor, selecione uma raça da lista disponível.`);
+          notification.warning({
+            message: 'Raça inválida',
+            description: 'Selecione uma raça disponível na lista do formulário.'
+          });
           return; // BLOQUEAR criação se raça for inválida
         }
       }
@@ -1587,12 +1727,15 @@ const CadastroPaciente = () => {
 
       
       if (tipoUtenteId && !isNaN(tipoUtenteId)) {
-        const tipoUtenteExiste = tiposUtentesValidosBackend?.find(t => t.id === parseInt(tipoUtenteId));
+        const tipoUtenteExiste = tiposUtentesValidosBackend?.find(t => sameId(t.id, tipoUtenteId));
         if (tipoUtenteExiste) {
           dadosPaciente.tipo_utente_id = parseInt(tipoUtenteId);
         } else {
-          console.warn('⚠️ TIPO UTENTE não encontrado no backend, usando fallback');
-          dadosPaciente.tipo_utente_id = tiposUtentesValidosBackend[0]?.id || 1;
+          notification.warning({
+            message: 'Tipo de utente inválido',
+            description: 'Selecione novamente o tipo de utente.'
+          });
+          return;
         }
       } else {
         console.warn('⚠️ TIPO UTENTE NÃO FORNECIDO - campo vazio ou inválido');
@@ -1602,12 +1745,15 @@ const CadastroPaciente = () => {
       
       // ==================== VALIDAÇÃO DE UNIDADE ORGÂNICA COM DADOS DO BACKEND ====================
       if (values.unidadeOrganica && !isNaN(values.unidadeOrganica)) {
-        const unidadeExiste = unidadesOrganicasValidasBackend?.find(u => u.id === parseInt(values.unidadeOrganica));
+        const unidadeExiste = unidadesOrganicasValidasBackend?.find(u => sameId(u.id, values.unidadeOrganica));
         if (unidadeExiste) {
           dadosPaciente.unidade_organica_id = parseInt(values.unidadeOrganica);
         } else {
-          console.warn('⚠️ UNIDADE ORGÂNICA não encontrada, usando fallback');
-          dadosPaciente.unidade_organica_id = unidadesOrganicasValidasBackend[0]?.id || 1;
+          notification.warning({
+            message: 'Unidade orgânica inválida',
+            description: 'Selecione novamente a unidade orgânica.'
+          });
+          return;
         }
       }
       
@@ -1691,7 +1837,7 @@ const CadastroPaciente = () => {
 
 
       // Testar conectividade com o backend
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         message.error('Token de autenticação não encontrado. Faça login novamente.');
         return;
@@ -1719,37 +1865,6 @@ const CadastroPaciente = () => {
       }
 
       
-      
-      // SOLUÇÃO: Mapear do Patient Service ID para o nome e tentar outros IDs
-      
-      const racaAtual = racasValidasBackend?.find(r => r.id === values.raca);
-      if (racaAtual) {
-        console.log('🔍 Raça encontrada no Patient Service:', {
-          id: racaAtual.id,
-          nome: racaAtual.nome,
-          codigo: racaAtual.codigo
-        });
-        
-        // Tentar mapeamento baseado no nome da raça
-        const mapeamentoRacas = {
-          'Negra': [0, 1, 2],     // Tentar múltiplos IDs
-          'Branca': [1, 2, 3],
-          'Parda': [2, 3, 4], 
-          'Amarela': [3, 4, 5],
-          'Indígena': [4, 5, 6],
-          'Outra': [5, 6, 0]
-        };
-        
-        const possiveisIds = mapeamentoRacas[racaAtual.nome] || [0, 1, 2];
-        
-        // Usar o primeiro ID como padrão, mas preparar para tentativas
-        dadosPaciente.raca_id = possiveisIds[0];
-        dadosPaciente._racaOriginal = racaAtual;
-        dadosPaciente._tentativasRaca = possiveisIds.slice(1);
-
-      } else {
-        console.error('❌ Raça não encontrada no Patient Service!');
-      }
       
       // bilhete_identidade mapeado seguindo a mesma lógica dos utentes autônomos
       
@@ -1782,70 +1897,33 @@ const CadastroPaciente = () => {
       }
       
     } catch (error) {
-      console.error('❌ ERRO NO CADASTRO COM VALIDAÇÃO APRIMORADA:', error);
-      
-      if (error.response?.data?.errors) {
-        const errorMessages = Object.entries(error.response.data.errors)
-          .map(([field, messages]) => {
-            const msgArray = Array.isArray(messages) ? messages : [messages];
-            return `Campo '${field}': ${msgArray.join(', ')}`;
-          })
-          .join('\n');
-        
-        console.error('❌ ERROS DE VALIDAÇÃO DETALHADOS:', error.response.data.errors);
-        message.error(`Erro de validação:\n${errorMessages}`);
-      } else if (error.response?.data?.message) {
-        console.error('❌ ERRO DO SERVIDOR:', error.response.data.message);
-        message.error(`Erro do servidor: ${error.response.data.message}`);
-      } else if (error.message?.includes('Token de autenticação')) {
-        message.error('Sessão expirada. Faça login novamente.');
-      } else if (error.response?.status === 401) {
-        message.error('Acesso negado. Verifique suas credenciais.');
-      } else if (error.response?.status === 500) {
-        message.error('Erro interno do servidor. Tente novamente mais tarde.');
-      } else if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network')) {
-        message.error('Erro de conexão. Verifique se o backend está rodando.');
-      } else {
-        const errorMsg = error.response?.data?.message || error.message || 'Erro desconhecido';
-        message.error(`Erro ao criar paciente: ${errorMsg}`);
+      const duplicatePaciente = error?.response?.data?.duplicate_paciente;
+      const duplicateNid = error?.response?.data?.duplicate_nid;
+      if (error?.response?.status === 409 && duplicatePaciente) {
+        const duplicateMessage = `Já existe um utente cadastrado com este nome, apelido e data de nascimento${duplicatePaciente.nid ? ` (NID: ${duplicatePaciente.nid})` : ''}.`;
+        setCurrentStep(0);
+        form.setFields([
+          { name: 'nome', errors: [duplicateMessage] },
+          { name: 'apelido', errors: ['Confirme se este utente já não está cadastrado.'] },
+          { name: 'dataNascimento', errors: ['A combinação de nome, apelido e data de nascimento já existe.'] },
+        ]);
       }
+
+      if (error?.response?.status === 409 && duplicateNid) {
+        setCurrentStep(0);
+        form.setFields([
+          { name: 'nid', errors: [`O NID ${duplicateNid.nid} já está cadastrado${duplicateNid.nome_completo ? ` para ${duplicateNid.nome_completo}` : ''}.`] },
+        ]);
+      }
+
+      showApiError(
+        'Não foi possível cadastrar o paciente',
+        error,
+        'Revise os campos informados e tente novamente.'
+      );
     }
   };
   
-  // Função antiga comentada para referência
-  // const handleCreateOld = (values) => {
-  //   const anoAtual = new Date().getFullYear();
-  //   let ultimoNumero = 0;
-
-  //   pacientes.forEach(p => {
-  //     if (p.nid && p.nid.includes(`/${anoAtual}`)) {
-  //       const match = p.nid.match(/^\d+/);
-  //       if (match) {
-  //         const numero = parseInt(match[0], 10);
-  //         if (numero > ultimoNumero) {
-  //           ultimoNumero = numero;
-  //         }
-  //       }
-  //     }
-  //   });
-
-  //   const novoNID = String(ultimoNumero + 1).padStart(4, '0') + `/${anoAtual}`;
-
-  //   const novoPaciente = {
-  //     id: Date.now(),
-  //     ...values,
-  //     nid: novoNID,
-  //     dataCadastro: new Date(),
-  //     estadoAtual: 'aguardando_pagamento'
-  //   };
-
-  //   setPacientes([...pacientes, novoPaciente]);
-  //   message.success('Utente cadastrado com sucesso!');
-  //   setIsModalVisible(false);
-  //   form.resetFields();
-  // };
-
-  // };
 
   // Função para abrir o modal de pagamento da consulta de especialidade
   const handlePagarConsultaEspecialidade = (paciente) => {
@@ -1854,7 +1932,7 @@ const CadastroPaciente = () => {
     
     if (paciente.tipoUtenteId && !paciente.tipoUtente) {
       // Buscar tipo de utente nos dados do Patient Service
-      const tipoUtenteObj = patientServiceTiposUtentes?.find(tipo => tipo.id === paciente.tipoUtenteId);
+      const tipoUtenteObj = patientServiceTiposUtentes?.find(tipo => sameId(tipo.id, paciente.tipoUtenteId));
       
       if (tipoUtenteObj) {
         // Mapear código do backend para string interna
@@ -1870,19 +1948,13 @@ const CadastroPaciente = () => {
           'EST-D': 'estudanteDoutoramento'
         };
         
-        pacienteComTipoUtente.tipoUtente = codigoParaTipoUtente[tipoUtenteObj.codigo] || tipoUtenteObj.nome || 'comunidade';
+        pacienteComTipoUtente.tipoUtente = codigoParaTipoUtente[tipoUtenteObj.codigo] || tipoUtenteObj.nome;
       } else {
-        // Fallback: mapeamento direto por ID
-        const idParaTipoUtente = {
-          1: 'estudanteNaoBolseiro',
-          2: 'estudanteBolseiro',
-          3: 'docente',
-          4: 'funcionario', 
-          5: 'comunidade',
-          6: 'familiardocente',
-          7: 'familiarfuncionario'
-        };
-        pacienteComTipoUtente.tipoUtente = idParaTipoUtente[paciente.tipoUtenteId] || 'comunidade';
+        notification.warning({
+          message: 'Tipo de utente não encontrado',
+          description: 'Atualize os dados do paciente antes de processar o pagamento.'
+        });
+        return;
       }
     }
     
@@ -1904,23 +1976,8 @@ const CadastroPaciente = () => {
     if (!tipoUtenteId) return null;
     
     // Buscar nos dados do Patient Service primeiro
-    const tipoUtente = patientServiceTiposUtentes?.find(tipo => tipo.id === tipoUtenteId);
-    if (tipoUtente) {
-      return tipoUtente.codigo;
-    }
-    
-    // Fallback para mapeamento estático
-    const mapeamentoEstatico = {
-      1: 'EST-NB',
-      2: 'EST-B', 
-      3: 'DOC',
-      4: 'FUNC',
-      5: 'COM',
-      6: 'FAM-DOC',
-      7: 'FAM-FUNC'
-    };
-    
-    return mapeamentoEstatico[tipoUtenteId] || null;
+    const tipoUtente = getTipoUtenteById(tipoUtenteId);
+    return tipoUtente?.codigo || null;
   };
 
   // Função para sincronizar paciente faltando com o backend
@@ -1942,7 +1999,7 @@ const CadastroPaciente = () => {
 
       
       // Carregar dados de pagamento do backend
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         console.error('❌ Token não encontrado no localStorage');
         message.error('Token de autenticação não encontrado');
@@ -1960,7 +2017,7 @@ const CadastroPaciente = () => {
         throw new Error('NID do paciente é obrigatório para carregar dados de pagamento');
       }
       
-      const url = `http://196.3.100.216/api/pacientes/nid/${numero}/${ano}/dados-pagamento`;
+      const url = `${API_BASE}/pacientes/nid/${numero}/${ano}/dados-pagamento`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -2007,7 +2064,7 @@ const CadastroPaciente = () => {
       const isEstudanteBolseiro = dadosPagamento.dados_paciente?.tipo_utente?.codigo === 'EST-B';
       const tipoConsultaDefault = dadosPagamento.configuracao?.tipos_consulta?.[0]?.id || 
                                 dadosPagamento.configuracao?.tipos_consulta?.[0]?.codigo || 
-                                'consulta_geral';
+                                'Selecione um tipo de consulta';
       const tipoUtenteId = dadosPagamento.dados_paciente?.tipo_utente?.id || paciente.tipoUtenteId;
       
 
@@ -2043,7 +2100,7 @@ const CadastroPaciente = () => {
             console.error('❌ ERRO: Não foi possível carregar valor da consulta do backend');
             
             // Buscar nome do tipo de utente para mensagem mais específica
-            const tipoUtente = patientServiceTiposUtentes?.find(t => t.id === tipoUtenteId);
+            const tipoUtente = getTipoUtenteById(tipoUtenteId);
             const nomeUtente = tipoUtente?.nome || tipoUtente?.codigo || `ID: ${tipoUtenteId}`;
             
             message.error({
@@ -2072,7 +2129,7 @@ const CadastroPaciente = () => {
           console.error('❌ Erro específico na busca de valor:', valorError);
           
           // Buscar nome do tipo de utente para mensagem mais específica
-          const tipoUtente = patientServiceTiposUtentes?.find(t => t.id === tipoUtenteId);
+          const tipoUtente = getTipoUtenteById(tipoUtenteId);
           const nomeUtente = tipoUtente?.nome || tipoUtente?.codigo || `ID: ${tipoUtenteId}`;
           
           message.error({
@@ -2109,7 +2166,7 @@ const CadastroPaciente = () => {
         message: error.message,
         stack: error.stack,
         pacienteId: paciente.id,
-        url: `http://196.3.100.216/api/pacientes/${paciente.id}/dados-pagamento`
+        url: `${API_BASE}/pacientes/${paciente.id}/dados-pagamento`
       });
       
 
@@ -2122,7 +2179,7 @@ const CadastroPaciente = () => {
       pacienteComTipoUtente.tiposConsulta = tiposConsulta || [];
       
       if (paciente.tipoUtenteId && !paciente.tipoUtente) {
-        const tipoUtenteObj = patientServiceTiposUtentes?.find(tipo => tipo.id === paciente.tipoUtenteId);
+        const tipoUtenteObj = getTipoUtenteById(paciente.tipoUtenteId);
         
         if (tipoUtenteObj) {
           const codigoParaTipoUtente = {
@@ -2187,7 +2244,7 @@ const CadastroPaciente = () => {
             console.error('❌ Não foi possível obter valor da consulta');
             
             // Buscar nome do tipo de utente para mensagem mais específica
-            const tipoUtente = patientServiceTiposUtentes?.find(t => t.id === paciente.tipoUtenteId);
+            const tipoUtente = getTipoUtenteById(paciente.tipoUtenteId);
             const nomeUtente = tipoUtente?.nome || tipoUtente?.codigo || `ID: ${paciente.tipoUtenteId}`;
             
             message.warning({
@@ -2224,60 +2281,6 @@ const CadastroPaciente = () => {
     }
   };
 
-  // Função para abrir o modal de consulta de acompanhamento
-  const handleConsultaAcompanhamento = (paciente) => {
-    const verificacao = podeRealizarConsultaAcompanhamento(paciente);
-    
-    if (!verificacao.pode) {
-      message.warning(verificacao.motivo);
-      return;
-    }
-
-    setPacienteAcompanhamento(paciente);
-    setIsAcompanhamentoModalVisible(true);
-    acompanhamentoForm.resetFields();
-  };
-
-  // Função para processar a consulta de acompanhamento
-  const processarConsultaAcompanhamento = (values) => {
-    const consultaAcompanhamento = {
-      ...pacienteAcompanhamento,
-      tipoConsulta: 'acompanhamento',
-      medico: values.medico,
-      tipoAcompanhamento: values.tipoAcompanhamento,
-      observacoesAcompanhamento: values.observacoes || '',
-      dataAgendamento: new Date().toLocaleString(),
-      statusPagamentoConsulta: 'pago', // Consulta de acompanhamento é gratuita
-      especialidade: 'Clínica Geral', // Consulta de acompanhamento sempre em clínica geral
-      prioridade: 'Normal'
-    };
-
-    // Adicionar à lista de consultas pendentes
-    setConsultasPendentes([...consultasPendentes, consultaAcompanhamento]);
-
-    // Marcar que já foi usada a consulta de acompanhamento
-    const updatedPacientes = pacientes.map(p => {
-      if (p.id === pacienteAcompanhamento.id) {
-        return {
-          ...p,
-          temAcompanhamentoDisponivel: false, // Desabilitar futuras consultas de acompanhamento
-          consultaAcompanhamentoRealizada: true
-        };
-      }
-      return p;
-    });
-    setPacientes(updatedPacientes);
-
-    message.success(
-      `Consulta de acompanhamento agendada para ${pacienteAcompanhamento.nome}! ` +
-      `Tipo: ${values.tipoAcompanhamento} | Médico: ${values.medico}`
-    );
-
-    setIsAcompanhamentoModalVisible(false);
-    setPacienteAcompanhamento(null);
-    acompanhamentoForm.resetFields();
-  };
-
   // Função para processar o pagamento da consulta regular
   const processarPagamentoRegular = async (values) => {
     try {
@@ -2296,7 +2299,7 @@ const CadastroPaciente = () => {
         return;
       }
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         message.error('Token de autenticação não encontrado');
         return;
@@ -2332,27 +2335,16 @@ const CadastroPaciente = () => {
           const valorNumerico = parseInt(values.metodoPagamento);
           if (!isNaN(valorNumerico)) {
             metodoPagamentoId = valorNumerico;
-          } else {
-            // Fallback para métodos conhecidos
-            const metodosHardcodedMap = {
-              'isencao': 1,
-              'dinheiro': 2, 
-              'mpesa': 3,
-              'emola': 4,
-              'cartao': 5,
-              'transferencia': 6
-            };
-            metodoPagamentoId = metodosHardcodedMap[values.metodoPagamento];
           }
         }
       }
       
-      // Se ainda não tiver ID, usar dinheiro como padrão
       if (!metodoPagamentoId) {
-        const dinheiroObj = metodosPagamento.find(metodo => 
-          metodo.codigo === 'dinheiro' || metodo.nome?.toLowerCase().includes('dinheiro')
-        );
-        metodoPagamentoId = dinheiroObj?.id || 2; // 2 como fallback para dinheiro
+        notification.warning({
+          message: 'Método de pagamento inválido',
+          description: 'Selecione um método de pagamento disponibilizado pelo servidor.'
+        });
+        return;
       }
       
 
@@ -2376,12 +2368,12 @@ const CadastroPaciente = () => {
         }
       }
       
-      // Se ainda não tiver ID, usar consulta geral como padrão
       if (!tipoConsultaId) {
-        const consultaGeralObj = tiposConsulta.find(tipo => 
-          tipo.codigo === 'consulta_geral' || tipo.nome?.toLowerCase().includes('geral')
-        );
-        tipoConsultaId = consultaGeralObj?.id || 1; // 1 como fallback
+        notification.warning({
+          message: 'Tipo de consulta inválido',
+          description: 'Selecione um tipo de consulta disponibilizado pelo servidor.'
+        });
+        return;
       }
       
       
@@ -2430,7 +2422,7 @@ const CadastroPaciente = () => {
       };
 
 
-      const url = 'http://196.3.100.216/api/pacientes/processar-pagamento';
+      const url = `${API_BASE}/pacientes/processar-pagamento`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -2533,19 +2525,32 @@ const CadastroPaciente = () => {
       console.log('✅ Pagamento processado:', resultadoPagamento);
 
       // Atualizar dados locais com resposta do backend
+      const tipoConsultaSelecionado = tiposConsulta.find(tipo =>
+        sameId(tipo.id, values.tipoConsulta) || sameId(tipo.codigo, values.tipoConsulta)
+      );
+      const metodoPagamentoSelecionado = metodosPagamento.find(metodo =>
+        sameId(metodo.id, values.metodoPagamento) || sameId(metodo.codigo, values.metodoPagamento)
+      );
+
+      const pagamentoBackend = resultadoPagamento?.data?.pagamento || resultadoPagamento?.pagamento || resultadoPagamento?.dados_pagamento || {};
+      const pacienteBackend = resultadoPagamento?.data?.paciente || resultadoPagamento?.paciente_atualizado || {};
+
       const pacienteAtualizado = {
         ...pacientePagamentoRegular,
-        ...resultadoPagamento.paciente_atualizado,
-        statusPagamentoConsulta: 'pago',
-        dataPagamentoConsulta: new Date().toLocaleString(),
-        ultimoPagamento: resultadoPagamento.dados_pagamento
+        ...pacienteBackend,
+        statusPagamentoConsulta: pacienteBackend.status_pagamento || pagamentoBackend.status || (pagamentoBackend.isencao_aplicada ? 'isento' : 'pago'),
+        tipoConsultaId: tipoConsultaId,
+        tipoConsultaRegular: values.tipoConsulta,
+        tipoConsultaNome: tipoConsultaSelecionado?.nome || tipoConsultaSelecionado?.descricao || values.tipoConsulta,
+        valorConsultaRegular: metodoPagamentoIsencao ? 0 : (parseFloat(values.valor) || 0),
+        metodoPagamentoRegular: metodoPagamentoId,
+        metodoPagamentoNome: pagamentoBackend.isencao_aplicada ? 'Isento' : (pagamentoBackend.metodo_pagamento_nome || pagamentoBackend.metodo || metodoPagamentoSelecionado?.nome || values.metodoPagamento),
+        referenciaPagamento: pagamentoBackend.numero_recibo || pagamentoBackend.referencia || pagamentoBackend.referencia_pagamento || pagamentoBackend.numero_referencia || values.referencia || null,
+        dataPagamentoConsulta: pagamentoBackend.data_pagamento || pagamentoBackend.data_pagamento_formatada || new Date().toLocaleString(),
+        ultimoPagamento: pagamentoBackend
       };
 
-      // Atualizar o paciente na lista de pacientes
-      const updatedPacientes = pacientes.map(p =>
-        p.id === pacientePagamentoRegular.id ? pacienteAtualizado : p
-      );
-      setPacientes(updatedPacientes);
+      atualizarPacienteLocal(pacientePagamentoRegular.id, pacienteAtualizado);
       
       // Fechar o modal de pagamento
       setIsPagamentoRegularModalVisible(false);
@@ -2718,7 +2723,6 @@ const CadastroPaciente = () => {
         data_colheita: amanha.toISOString().split('T')[0],
         hora_colheita: '09:00',
         observacoes: `Exames agendados: ${examesSelecionados.join(', ')}${examesNaoRealizaveis.length > 0 ? `. Não realizáveis: ${examesNaoRealizaveis.join(', ')}` : ''}`,
-        tecnico_id: 1 // ID padrão - ajustar conforme necessário
       };
 
       await agendarColheita(exameParaMarcar.id, payload, () => {
@@ -2738,7 +2742,7 @@ const CadastroPaciente = () => {
                 <b>Agendados:</b> {examesSelecionados.join(', ')}
               </div>
               {examesNaoRealizaveis.length > 0 && (
-                <div style={{ fontSize: '12px', color: '#ff9500' }}>
+                <div style={{ fontSize: '12px', color: '#fa8c16' }}>
                   <b>Não realizáveis:</b> {examesNaoRealizaveis.join(', ')}
                 </div>
               )}
@@ -2766,7 +2770,7 @@ const CadastroPaciente = () => {
         return;
       }
 
-      const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         message.error('Token de autenticação não encontrado');
         return;
@@ -2789,7 +2793,7 @@ const CadastroPaciente = () => {
 
 
       const response = await axios.post(
-        'http://196.3.100.216/api/services/pagamento-especialidade',
+        `${API_BASE}/services/pagamento-especialidade`,
         payload,
         {
           headers: {
@@ -2809,19 +2813,8 @@ const CadastroPaciente = () => {
 
       setIsPagamentoModalVisible(false);
 
-      // Atualizar lista de transferidos com múltiplas tentativas
-      // (para garantir que o backend processou a atualização do status_pagamento)
-      await carregarPacientesTransferidosEspecialidade();
-      
-      // Segunda atualização após 1 segundo
-      setTimeout(async () => {
-        await carregarPacientesTransferidosEspecialidade();
-      }, 1000);
-      
-      // Terceira atualização após 2 segundos (para garantir)
-      setTimeout(async () => {
-        await carregarPacientesTransferidosEspecialidade();
-      }, 2000);
+      invalidateCachedRequest('pacientes:transferidos-especialidade');
+      await carregarPacientesTransferidosEspecialidade({ force: true });
       setPacientePagamento(null);
       pagamentoForm.resetFields();
 
@@ -2865,38 +2858,20 @@ const CadastroPaciente = () => {
 
       
       if (processedValues.tipoUtente !== undefined) {
-        let tipoUtenteId = processedValues.tipoUtente;
-        
-        // Se for string, converter usando o mapeamento robusto do handleCreate
-        if (typeof processedValues.tipoUtente === 'string') {
-          const mapeamentoTipoUtente = {
-            'estudanteNaoBolseiro': 1,
-            'estudanteBolseiro': 2,  
-            'estudanteMestrado': 3,
-            'estudanteDoutoramento': 4,
-            'investigador': 5,
-            'docente': 6,
-            'funcionario': 7,
-            'familiarDocente': 8,
-            'familiarFuncionario': 9,
-            'familiarInvestigador': 10,
-            'comunidade': 11
-          };
-          tipoUtenteId = mapeamentoTipoUtente[processedValues.tipoUtente];
-        }
+        const tipoUtenteId = processedValues.tipoUtente;
         
         // Validar se existe no backend (mesmo padrão do handleCreate)
         if (tipoUtenteId && !isNaN(tipoUtenteId)) {
-          const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => t.id === parseInt(tipoUtenteId));
+          const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => sameId(t.id, tipoUtenteId));
           if (tipoUtenteExiste) {
             camposConvertidos.tipo_utente_id = parseInt(tipoUtenteId, 10);
           } else {
-            console.warn('⚠️ EDIT: TIPO UTENTE não encontrado no backend, usando fallback');
-            camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
+            notification.warning({
+              message: 'Tipo de utente inválido',
+              description: 'Selecione novamente o tipo de utente.'
+            });
+            return;
           }
-        } else {
-          console.warn('⚠️ EDIT: TIPO UTENTE NÃO FORNECIDO ou inválido - mantendo valor original');
-          camposConvertidos.tipo_utente_id = editingPaciente?.tipo_utente_id || editingPaciente?.tipoUtenteId || 1;
         }
       }
       if (processedValues.unidadeOrganica !== undefined) {
@@ -2966,13 +2941,27 @@ const CadastroPaciente = () => {
       if (statusPaciente.motivo) {
         mensagem += `\n${statusPaciente.motivo}`;
       }
-      message.warning(mensagem);
+      notification.warning({
+        message: 'Marcação bloqueada',
+        description: mensagem
+      });
       return;
     }
 
     // Verificar se já existe triagem pendente (verificação adicional)
-    if (triagensPendentes.find(p => p.id === paciente.id || p.pacienteId === paciente.id)) {
-      message.warning('Este paciente já foi marcado para triagem.');
+    if (triagensPendentes.find(p => matchesPaciente(p, paciente) && isActiveWorkflowStatus(p.status || p.estado || p.situacao))) {
+      notification.warning({
+        message: 'Triagem já marcada',
+        description: 'Este paciente já tem uma solicitação de triagem pendente ou em atendimento.'
+      });
+      return;
+    }
+
+    if (consultasPendentes.find(c => matchesPaciente(c, paciente) && isActiveWorkflowStatus(c.status || c.estado || c.situacao || 'em_consulta'))) {
+      notification.warning({
+        message: 'Paciente em consulta',
+        description: 'Não é possível marcar nova triagem enquanto o paciente estiver em consulta.'
+      });
       return;
     }
 
@@ -2985,8 +2974,22 @@ const CadastroPaciente = () => {
 
   // Função para confirmar a triagem após selecionar a urgência
   const confirmarTriagem = () => {
+    if (criandoSolicitacaoTriagem) return;
+
     if (!urgenciaTriagem) {
-      message.warning('Por favor, selecione o estado de urgência.');
+      notification.warning({
+        message: 'Selecione a urgência',
+        description: 'Informe o estado de urgência antes de confirmar a triagem.'
+      });
+      return;
+    }
+
+    const statusPaciente = obterStatusPaciente(triagemPaciente || {});
+    if (statusPaciente.desabilitado) {
+      notification.warning({
+        message: 'Marcação bloqueada',
+        description: statusPaciente.motivo || `O paciente está com status: ${statusPaciente.texto}.`
+      });
       return;
     }
 
@@ -2998,7 +3001,7 @@ const CadastroPaciente = () => {
 
     // Envia solicitação de triagem ao backend
     (async () => {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         message.error('Token de autenticação não encontrado. Não foi possível enviar solicitação de triagem.');
         return;
@@ -3024,7 +3027,8 @@ const CadastroPaciente = () => {
       }
 
       try {
-        const url = 'http://196.3.100.216/api/solicitacoes-triagem/';
+        setCriandoSolicitacaoTriagem(true);
+        const url = `${API_BASE}/pacientes/solicitacoes-triagem`;
         console.log('📨 Enviando solicitação de triagem:');
 
         const res = await fetch(url, {
@@ -3061,15 +3065,69 @@ const CadastroPaciente = () => {
           } catch (e) {
             // Não é JSON, usar texto original
           }
-          
-          message.error(`Erro ao criar solicitação de triagem: ${res.status} - ${errorDetails}`);
+
+          if (res.status === 409) {
+            const errorJson = JSON.parse(text || '{}');
+            const solicitacaoExistente = errorJson?.data?.solicitacao || errorJson?.solicitacao || null;
+            const normalizedSolicitacao = {
+              ...(solicitacaoExistente || {}),
+              pacienteId: solicitacaoExistente?.paciente_id || solicitacaoExistente?.pacienteId || triagemPaciente.id,
+              paciente_id: solicitacaoExistente?.paciente_id || solicitacaoExistente?.pacienteId || triagemPaciente.id,
+              id: solicitacaoExistente?.id || triagemPaciente.triagem_id || `pendente-${triagemPaciente.id}`,
+              estadoUrgencia: solicitacaoExistente?.urgencia || solicitacaoExistente?.estadoUrgencia || urgenciaTriagem,
+              urgencia: solicitacaoExistente?.urgencia || urgenciaTriagem,
+              observacoes: solicitacaoExistente?.observacoes ?? observacoesTriagem ?? null,
+              dataTriagem: solicitacaoExistente?.created_at || solicitacaoExistente?.data_solicitacao || new Date().toLocaleString(),
+              status: solicitacaoExistente?.status || 'aguardando_triagem'
+            };
+
+            setTriagensPendentes(prev => {
+              const exists = prev.some(item => matchesPaciente(item, triagemPaciente));
+              return exists
+                ? prev.map(item => matchesPaciente(item, triagemPaciente) ? { ...item, ...normalizedSolicitacao } : item)
+                : [normalizedSolicitacao, ...prev];
+            });
+
+            atualizarPacienteLocal(triagemPaciente.id, {
+              status: normalizedSolicitacao.status,
+              estadoAtual: normalizedSolicitacao.status,
+              triagem_id: normalizedSolicitacao.id,
+              statusSolicitacaoTriagem: normalizedSolicitacao.status,
+              ultimaSolicitacaoTriagem: normalizedSolicitacao
+            });
+
+            await carregarPacientes({
+              page: pacientesPagination.current || 1,
+              pageSize: pacientesPagination.pageSize || 10,
+              search: searchText.trim(),
+              force: true
+            });
+
+            notification.info({
+              message: 'Utente já está encaminhado para triagem',
+              description: 'Este utente já tem uma triagem pendente. Atualizamos a tabela para refletir o estado correto.',
+              placement: 'topRight',
+              duration: 7
+            });
+
+            setIsTriagemModalVisible(false);
+            setTriagemPaciente(null);
+            return;
+          }
+
+          notification.error({
+            message: 'Não foi possível marcar a triagem',
+            description: errorDetails || 'Tente novamente dentro de instantes.',
+            placement: 'topRight',
+            duration: 6
+          });
           return;
         }
 
         const data = await res.json();
 
-        // O backend pode devolver a solicitação em diferentes formatos (data, solicitacao, solicitacao_triang)
-        const solicitacao = data.solicitacao || data.data || data || null;
+        // O backend pode devolver a solicitação em diferentes formatos.
+        const solicitacao = data?.data?.solicitacao || data?.solicitacao || data?.data || data || null;
 
         if (!solicitacao) {
           console.warn('⚠️ Resposta de criação de triagem sem objeto esperado:', data);
@@ -3089,18 +3147,21 @@ const CadastroPaciente = () => {
           setTriagensPendentes(prev => [normalizedSolicitacao, ...prev]);
 
           // Atualiza o paciente na lista principal para refletir o estado da solicitação
-          setPacientes(prev => prev.map(p => {
-            if (p.id === (solicitacao.paciente_id || triagemPaciente.id)) {
-              return {
-                ...p,
-                // Campos que podem ser usados por obterStatusPaciente
-                triagem_id: normalizedSolicitacao.id,
-                statusSolicitacaoTriagem: normalizedSolicitacao.status,
-                ultimaSolicitacaoTriagem: normalizedSolicitacao
-              };
-            }
-            return p;
-          }));
+          atualizarPacienteLocal(solicitacao.paciente_id || triagemPaciente.id, {
+            // Campos que podem ser usados por obterStatusPaciente
+            status: normalizedSolicitacao.status,
+            estadoAtual: normalizedSolicitacao.status,
+            triagem_id: normalizedSolicitacao.id,
+            statusSolicitacaoTriagem: normalizedSolicitacao.status,
+            ultimaSolicitacaoTriagem: normalizedSolicitacao
+          });
+
+          await carregarPacientes({
+            page: pacientesPagination.current || 1,
+            pageSize: pacientesPagination.pageSize || 10,
+            search: searchText.trim(),
+            force: true
+          });
 
           message.success(`Solicitação de triagem criada com sucesso (urgência: ${urgenciaTriagem}).`);
         }
@@ -3111,7 +3172,9 @@ const CadastroPaciente = () => {
 
       } catch (err) {
         console.error('❌ Erro ao enviar solicitação de triagem:', err);
-        message.error('Erro ao enviar solicitação de triagem. Verifique o console para mais detalhes.');
+        showApiError('Erro ao enviar solicitação de triagem', err, 'Verifique a ligação e tente novamente.');
+      } finally {
+        setCriandoSolicitacaoTriagem(false);
       }
     })();
   };
@@ -3120,12 +3183,23 @@ const CadastroPaciente = () => {
   const handleSearchInput = (e) => {
     setSearchText(e.target.value);
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      carregarPacientes({
+        page: 1,
+        pageSize: pacientesPagination.pageSize,
+        search: searchText.trim()
+      });
+    }, 350);
+
+    return () => clearTimeout(timer);
+    // carregarPacientes muda com a paginação interna do hook; aqui queremos reagir apenas à pesquisa e ao tamanho da página.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText, pacientesPagination.pageSize]);
+
   // ✅ USANDO DADOS DO BACKEND: apiPacientes em vez de pacientes do ClinicContext
-  const filteredPacientes = (apiPacientes || [])
-    .filter(paciente =>
-      (paciente.nome && paciente.nome.toLowerCase().includes(searchText.toLowerCase())) ||
-      (paciente.nid && paciente.nid.includes(searchText))
-    )
+  const filteredPacientes = [...(pacientes || [])]
     .sort((a, b) => {
       // Sort by dataCadastro in descending order (most recent first)
       const dateA = a.dataCadastro ? new Date(a.dataCadastro) : new Date(0);
@@ -3137,16 +3211,16 @@ const CadastroPaciente = () => {
   const columns = [{ title: 'NID', dataIndex: 'nid', key: 'nid' },
   { title: 'Apelido', dataIndex: 'apelido', key: 'apelido' },
   { title: 'Nome', dataIndex: 'nome', key: 'nome' },
-  {
-    title: 'Data de Cadastro',
-    dataIndex: 'dataCadastro',
-    key: 'dataCadastro',
-    render: (text) => {
-      if (!text) return 'N/A';
-      const date = new Date(text);
-      return date.toLocaleDateString('pt-BR');
-    },
-  },
+  // {
+  //   title: 'Data de Cadastro',
+  //   dataIndex: 'dataCadastro',
+  //   key: 'dataCadastro',
+  //   render: (text) => {
+  //     if (!text) return 'N/A';
+  //     const date = new Date(text);
+  //     return date.toLocaleDateString('pt-BR');
+  //   },
+  // },
   {
     title: 'Faixa Etária',
     dataIndex: 'dataNascimento',
@@ -3173,38 +3247,12 @@ const CadastroPaciente = () => {
     title: 'Tipo de Utente', 
     dataIndex: 'tipoUtenteId', 
     key: 'tipoUtente',
-    render: (tipoUtenteId, record) => {
-      
-      // Se não tem ID, mostrar N/A
-      if (!tipoUtenteId) {
-        return 'N/A';
-      }
-
-      // Buscar tipo de utente nos dados do Patient Service
-      const tipoUtente = patientServiceTiposUtentes?.find(tipo => tipo.id === tipoUtenteId);
-      
-      if (tipoUtente) {
-        return tipoUtente.nome || tipoUtente.sigla || 'Tipo Desconhecido';
-      }
-
-      // Fallback: se não encontrar no Patient Service, usar dados diretos do record
-      if (record.tipoUtente) {
-        return record.tipoUtente;
-      }
-
-      // Fallback: mapeamento estático (manter para compatibilidade)
-      const tiposUtenteMap = {
-        1: 'EST-NB', // Estudante Não Bolseiro
-        2: 'EST-B',  // Estudante Bolseiro  
-        3: 'DOC',    // Docente
-        4: 'FUNC',   // Funcionário
-        5: 'COM',    // Comunidade
-        6: 'FAM-DOC', // Familiar Docente
-        7: 'FAM-FUNC' // Familiar Funcionário
-      };
-
-      return tiposUtenteMap[tipoUtenteId] || `ID: ${tipoUtenteId}`;
-    },
+    render: (_, record) => getTipoUtenteNome(record) || 'N/A',
+  },
+  {
+    title: 'Raça',
+    key: 'raca',
+    render: (_, record) => getRacaNome(record) || 'N/A',
   },
   // { title: 'Estado', dataIndex: 'estado', key: 'estado',
   //   render: (text) => {
@@ -3217,156 +3265,40 @@ const CadastroPaciente = () => {
   // },
   { title: 'Celular', dataIndex: 'celular', key: 'celular' },
   {
-    title: 'Status Atual',
+    title: 'Status',
     key: 'statusAtual',
     render: (_, record) => {
-      // CORREÇÃO: Ampliar verificação para consultas com exames pendentes (incluindo vários status possíveis)
-      const consultaComExames = consultasRealizadas
-        .filter(c => (c.id === record.id || c.pacienteId === record.id) && (
-          c.status === 'aguardando_exames' ||
-          c.status === 'finalizada_com_exames' ||
-          c.tipoFinalizacao === 'so_exames' ||
-          (c.temExames && !c.temPrescricao) ||
-          c.aguardandoExames === true
-        ))
-        .sort((a, b) => new Date(b.dataConsulta) - new Date(a.dataConsulta))[0];
-      
-      // Verificar também nas consultas pendentes
-      const consultaPendenteComExames = consultasPendentes
-        .find(c => (c.id === record.id || c.pacienteId === record.id) && c.aguardandoExames === true);
-
-      // Verificar também nas triagens realizadas se há exames concluídos aguardando consulta
-      const examesConcluidos = triagensRealizadas.find(t =>
-        (t.id === record.id || t.pacienteId === record.id) && 
-        t.status === 'exames_concluidos' && 
-        t.resultadosExames &&
-        t.retornoConsulta === true &&
-        !t.jaConsultado
-      );
-      
-      // Verificar também se o paciente está explicitamente marcado como retorno com exames
-      const consultaRetornoExames = consultasPendentes.find(c =>
-        (c.id === record.id || c.pacienteId === record.id) && 
-        c.retornoComExames === true
-      );
-
-      // CORREÇÃO: Melhorar a detecção e exibição de status para pacientes com exames
-      if (((consultaComExames || consultaPendenteComExames) && record.statusPagamentoConsulta === 'pago') || 
-          examesConcluidos || consultaRetornoExames) {
-        
-        // Determinar qual tipo de status mostrar
-        const isRetornoExames = examesConcluidos || consultaRetornoExames;
-        const color = isRetornoExames ? '#52c41a' : '#1890ff'; // Verde para retorno, azul para aguardando
-        
-        // Verificar se o paciente já está em consulta com os resultados
-        const jaEstaEmConsulta = consultaRetornoExames !== undefined;
-        
-        let statusText = '';
-        if (jaEstaEmConsulta) {
-          statusText = 'Em Consulta - Retorno com Exames';
-        } else if (isRetornoExames) {
-          statusText = 'Aguardando Consulta de Retorno com Exames';
-        } else {
-          statusText = 'Em Consulta e Aguardando Exames';
-        }
-        
-        return <span style={{ color: color, fontWeight: 'bold' }}>
-          {statusText}
-        </span>;
-      }
-
-      // Verificar se a consulta foi realmente finalizada (alta, óbito, transferência, ou finalizada com prescrição)
-      const ultimaConsultaFinalizada = consultasRealizadas
-        .filter(c => (c.id === record.id || c.pacienteId === record.id) &&
-          (c.status === 'alta' || 
-           c.status === 'obito' || 
-           c.status === 'transferido' ||
-           (c.status === 'finalizada' && (c.prescricoes || c.dataAlta || c.temPrescricao))
-          ))
-        .sort((a, b) => new Date(b.dataConsulta) - new Date(a.dataConsulta))[0];
-
-      // Consulta finalizada E o paciente ainda tem status de pagamento (não foi resetado ainda)
-      const consultaFinalizadaComPagamento = ultimaConsultaFinalizada && record.statusPagamentoConsulta === 'pago';
-
-      // Consulta finalizada E o paciente foi resetado (não tem mais status de pagamento)
-      const consultaFinalizadaSemPagamento = ultimaConsultaFinalizada && !record.statusPagamentoConsulta;
-
-      // Se consulta foi finalizada, mostrar status apropriado
-      if (consultaFinalizadaComPagamento) {
-        const verificacao = podeRealizarNovaConsulta(record);
-        if (!verificacao.pode) {
-          return <span style={{ color: '#ff4d4f', fontWeight: 'bold' }} title={verificacao.motivo}>Aguardando Nova Consulta</span>;
-        } else {
-          return <span style={{ color: '#52c41a', fontWeight: 'bold' }}>Disponível para Nova Consulta</span>;
-        }
-      }
-
-      // Se consulta foi finalizada E foi resetado
-      if (consultaFinalizadaSemPagamento) {
-        // Verificar se tem consulta de acompanhamento disponível
-        if (record.temAcompanhamentoDisponivel) {
-          const verificacaoAcompanhamento = podeRealizarConsultaAcompanhamento(record);
-          if (verificacaoAcompanhamento.pode) {
-            return (
-              <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
-                Acompanhamento Disponível
-              </span>
-            );
-          }
-        }
-        return <span style={{ color: '#ff9500', fontWeight: 'bold' }}>Pagamento Pendente</span>;
-      }
-
-      // Lógica original para consultas não finalizadas
-      if (record.statusPagamentoConsulta !== 'pago') {
-        return <span style={{ color: '#ff9500', fontWeight: 'bold' }}>Pagamento Pendente</span>;
-      }
-
       const statusPaciente = obterStatusPaciente(record);
-
-      let displayText = statusPaciente.texto;
-      let tooltip = '';
-
-      if (statusPaciente.urgencia) {
-        displayText += ` (${statusPaciente.urgencia === 'urgente' ? 'URGENTE' : 'Normal'})`;
-        tooltip = `Urgência: ${statusPaciente.urgencia === 'urgente' ? 'URGENTE' : 'Não Urgente'}`;
-      }
-
-      if (statusPaciente.especialidade) {
-        tooltip = `Especialidade: ${statusPaciente.especialidade}`;
-        if (statusPaciente.medico) {
-          tooltip += `\nMédico: ${statusPaciente.medico}`;
-        }
-      }
-
-      if (statusPaciente.motivo && statusPaciente.status === 'bloqueado') {
-        tooltip = statusPaciente.motivo;
-      }
+      const detalhes = [
+        statusPaciente.urgencia ? `Urgência: ${statusPaciente.urgencia}` : null,
+        statusPaciente.especialidade ? `Especialidade: ${statusPaciente.especialidade}` : null,
+        statusPaciente.medico ? `Médico: ${statusPaciente.medico}` : null,
+        statusPaciente.motivo || statusPaciente.observacao || null,
+      ].filter(Boolean).join('\n');
 
       return (
         <span
           style={{
             color: statusPaciente.cor,
             fontWeight: 'bold',
-            cursor: tooltip ? 'help' : 'default'
+            cursor: detalhes ? 'help' : 'default'
           }}
-          title={tooltip}
+          title={detalhes}
         >
-          {displayText}
+          {statusPaciente.texto}
         </span>
       );
     }
   },
   {
-    title: 'Dados do Utente',
+    title: 'Dados',
     key: 'configuracoes',
     render: (_, record) => (
       <Button
         type="default"
         onClick={() => openAcompanhanteModal(record)}
-        style={{ backgroundColor: '#008CBA', color: 'white', borderColor: '#008CBA' }}
+        style={{ backgroundColor: '#008CBA', color: 'white', borderColor: '#008CBA' }} icon={<PlusSquareOutlined />}
       >
-        Adicionar
       </Button>
     )
   },
@@ -3375,184 +3307,61 @@ const CadastroPaciente = () => {
     key: 'acoes',
     render: (_, record) => {
       const statusPaciente = obterStatusPaciente(record);
+      const mostrarBoletimConsulta = podeGerarBoletimConsulta(record);
+      const statusAtual = statusPaciente.status || getWorkflowStatus(record).key;
 
-      // Verificar se tem consultas apenas com exames pendentes (não finalizadas)
-      // CORREÇÃO: Verificar se a consulta foi realmente finalizada 
-      // Incluir agora casos de: alta, óbito, transferência, finalizada com prescrição ou retorno com exames + prescrição
-      const ultimaConsultaFinalizada = consultasRealizadas
-        .filter(c => {
-          // Primeiro verificar se o paciente é o mesmo usando ID ou NID
-          const matchPaciente = c.id === record.id || 
-                                c.pacienteId === record.id || 
-                                (c.nid && c.nid === record.nid);
-          
-          if (!matchPaciente) return false;
-          
-          // Agora verificar os casos que finalizam a consulta
-          return (
-            // Casos clássicos de finalização
-            c.status === 'alta' || 
-            c.status === 'obito' || 
-            c.status === 'transferido' ||
-            (c.status === 'finalizada' && (c.prescricoes || c.dataAlta || c.temPrescricao)) ||
-            // NOVO CASO: Retorno com exames e prescrição
-            (c.retornoComExames === true && c.temPrescricao === true)
-          );
-        })
-        .sort((a, b) => {
-          // Garantir ordenação segura mesmo se dataConsulta for null
-          const dataA = a.dataConsulta || a.dataFinalizacao || 0;
-          const dataB = b.dataConsulta || b.dataFinalizacao || 0;
-          return new Date(dataB) - new Date(dataA);
-        })[0];
-
-      // Consulta finalizada E o paciente ainda tem status de pagamento (não foi resetado ainda)
-      const consultaFinalizadaComPagamento = ultimaConsultaFinalizada && record.statusPagamentoConsulta === 'pago';
-
-      // Consulta finalizada E o paciente foi resetado (não tem mais status de pagamento)
-      const consultaFinalizadaSemPagamento = ultimaConsultaFinalizada && !record.statusPagamentoConsulta;
-
-      // CORREÇÃO: Melhorar a detecção de pacientes aguardando exames (não deve mostrar opções de nova consulta)
-      // Verificar tanto pelo flag aguardandoExames na consulta pendente quanto por status 'aguardando_exames'
-      
-      // IMPORTANTE: Verificar primeiro se o ciclo foi terminado após retorno com exames e prescrições
-      // Se o paciente já foi resetado após um retorno com exames e prescrições, NÃO devemos mostrar o botão "Exames"
-      const cicloTerminadoComExamesEPrescricoes = consultasRealizadas.some(c => 
-        (c.id === record.id || c.pacienteId === record.id || (c.nid && c.nid === record.nid)) && 
-        c.retornoComExames === true && 
-        c.temPrescricao === true && 
-        c.status === 'finalizada'
+      const botaoPagarConsulta = (
+        <Button
+          type="default"
+          style={{ backgroundColor: '#fa8c16', color: 'white', borderColor: '#fa8c16' }}
+          icon={<MedicineBoxOutlined />}
+          onClick={() => handlePagarConsultaRegular(record)}
+        >
+          Pagar
+        </Button>
       );
-      
-      // Se o ciclo foi terminado com exames e prescrições, e o paciente foi resetado
-      // (não tem mais statusPagamentoConsulta), então não está mais aguardando exames
-      if (cicloTerminadoComExamesEPrescricoes && !record.statusPagamentoConsulta) {
-      }
-      
-      const aguardandoExames = 
-        // Se o ciclo foi terminado com exames e prescrições, NÃO está aguardando exames
-        !(cicloTerminadoComExamesEPrescricoes && !record.statusPagamentoConsulta) && (
-          // Verificar no registro do paciente
-          (record.aguardandoExames === true && record.statusPagamentoConsulta === 'pago') ||
-          
-          // Verificar nas consultas realizadas com vários status possíveis
-          // CORREÇÃO: Adicionar verificação por NID
-          consultasRealizadas.some(c => (
-            (c.id === record.id || c.pacienteId === record.id || (c.nid && c.nid === record.nid)) && 
-            (
-              c.status === 'aguardando_exames' ||
-              c.status === 'finalizada_com_exames' ||
-              c.tipoFinalizacao === 'so_exames' ||
-              (c.temExames && !c.temPrescricao) ||
-              c.aguardandoExames === true
-            )
-          )) ||
-          
-          // Verificar nas consultas pendentes
-          // CORREÇÃO: Adicionar verificação por NID
-          consultasPendentes.some(c => (
-            (c.id === record.id || c.pacienteId === record.id || (c.nid && c.nid === record.nid)) && 
-            (
-              c.aguardandoExames === true ||
-              c.examesEmAndamento === true ||
-              c.statusExames === 'pendente'
-            )
-          ))
-        );
 
-      // Debug log para João Silva
-      if (record.nome === 'João Silva') {
-        // CORREÇÃO: Debug log mais detalhado para entender o status
-      }
+      const botaoMarcarTriagem = (
+        <Button
+          type="default"
+          style={{ backgroundColor: '#52c41a', color: 'white', borderColor: '#52c41a' }}
+          icon={<SolutionOutlined />}
+          onClick={() => marcarTriagem(record)}
+        >
+          Triagem
+        </Button>
+      );
+
+      const acoesPorStatus = {
+        pagamento_pendente: botaoPagarConsulta,
+        disponivel: botaoMarcarTriagem,
+      };
 
       return (
-        <Space>
-          <Button type="default" style={{ backgroundColor: '#6c757d', color: 'white', borderColor: '#6c757d' }} icon={<EditOutlined />} onClick={() => openEditModal(record)}>Editar</Button>
+        <Space wrap>
+          <Button
+            type="default"
+            style={{ backgroundColor: '#6c757d', color: 'white', borderColor: '#6c757d' }}
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          />
 
-          {/* CORREÇÃO: Lógica revisada para botões após ciclo com exames e prescrições */}
-          {/* Verificamos primeiro se o paciente tem ciclo terminado com exames e prescrições */}
-          {aguardandoExames && !(cicloTerminadoComExamesEPrescricoes && !record.statusPagamentoConsulta) ? (
-            <Button 
-              type="default" 
-              style={{ backgroundColor: '#1890ff', color: 'white', borderColor: '#1890ff' }} 
-              disabled
-            >
-              Exames
-            </Button>
-          ) : consultaFinalizadaComPagamento ? (
-            /* Se consulta foi finalizada MAS ainda tem pagamento (não resetado), mostrar botão Triagem */
+          {mostrarBoletimConsulta && (
             <Button
               type="default"
+              title="Gerar boletim da consulta"
               style={{ backgroundColor: '#28a745', color: 'white', borderColor: '#28a745' }}
-              icon={<SolutionOutlined />}
-              onClick={() => marcarTriagem(record)}
+              icon={<FileTextOutlined />}
+              onClick={() => gerarBoletimConsulta(record)}
             >
-              Triagem
+              Boletim
             </Button>
-          ) : consultaFinalizadaSemPagamento ? (
-            /* Se consulta foi finalizada E foi resetado, mostrar pagar consulta + botão de acompanhamento se disponível */
-            <Space>
-              <Button
-                type="default"
-                style={{ backgroundColor: '#ff9500', color: 'white', borderColor: '#ff9500' }}
-                onClick={() => handlePagarConsultaRegular(record)}
-              >
-                Pagar
-              </Button>
-              
-              {/* Botão de consulta de acompanhamento se disponível */}
-              {record.temAcompanhamentoDisponivel && (
-                <Button
-                  type="default"
-                  style={{ backgroundColor: '#52c41a', color: 'white', borderColor: '#52c41a' }}
-                  onClick={() => handleConsultaAcompanhamento(record)}
-                >
-                  Retorno
-                </Button>
-              )}
-            </Space>
-          ) : (
-            /* Lógica original para consultas não finalizadas */
-            record.statusPagamentoConsulta === 'pago' ? (
-              <Button
-                type="default"
-                style={{
-                  backgroundColor: statusPaciente.desabilitado ? statusPaciente.cor : '#28a745',
-                  color: 'white',
-                  borderColor: statusPaciente.desabilitado ? statusPaciente.cor : '#28a745',
-                  cursor: statusPaciente.desabilitado ? 'not-allowed' : 'pointer'
-                }}
-                icon={<SolutionOutlined />}
-                onClick={() => {
-                  if (!statusPaciente.desabilitado) {
-                    marcarTriagem(record);
-                  } else {
-                    // Mostrar informações detalhadas do status
-                    let mensagem = `Status: ${statusPaciente.texto}`;
-                    if (statusPaciente.urgencia) {
-                      mensagem += `\nUrgência: ${statusPaciente.urgencia === 'urgente' ? 'URGENTE' : 'Não Urgente'}`;
-                    }
-                    if (statusPaciente.especialidade) {
-                      mensagem += `\nEspecialidade: ${statusPaciente.especialidade}`;
-                    }
-                    if (statusPaciente.medico) {
-                      mensagem += `\nMédico: ${statusPaciente.medico}`;
-                    }
-                    if (statusPaciente.motivo) {
-                      mensagem += `\nMotivo: ${statusPaciente.motivo}`;
-                    }
-                    message.info(mensagem);
-                  }
-                }}
-                disabled={statusPaciente.desabilitado}
-              >
-                {statusPaciente.desabilitado ? statusPaciente.texto : 'Triagem'}
-              </Button>
-            ) : (
-              <Button type="default" style={{ backgroundColor: '#ff9500', color: 'white', borderColor: '#ff9500' }} onClick={() => handlePagarConsultaRegular(record)}>
-                Consulta
-              </Button>
-            )
+          )}
+
+          {acoesPorStatus[statusAtual] || (
+            !statusPaciente.desabilitado
+              ? (record.statusPagamentoConsulta === 'pago' ? botaoMarcarTriagem : botaoPagarConsulta)
+              : null
           )}
         </Space>
       );
@@ -3586,51 +3395,6 @@ const CadastroPaciente = () => {
   // Função para abrir o modal de acompanhantes
   const openAcompanhanteModal = (paciente) => {
 
-    
-    // // Log detalhado dos campos importantes
-    // console.log('🎯 Análise de campos específicos:', {
-    //   // Identificação
-    //   id: paciente.id,
-    //   nid: paciente.nid,
-    //   nome: paciente.nome,
-    //   apelido: paciente.apelido,
-      
-    //   // Documentos
-    //   tipoDocumento: paciente.tipoDocumento,
-    //   tipoDocumentoId: paciente.tipo_documento_id,
-    //   bilheteIdentidade: paciente.bilhete_identidade,
-    //   bilheteIdentidadeCamel: paciente.bilheteIdentidade,
-      
-    //   // Raça (CRÍTICO)
-    //   raca: paciente.raca,
-    //   racaId: paciente.racaId,
-    //   raca_id: paciente.raca_id,
-    //   raca_nome: paciente.raca_nome,
-      
-    //   // Localização
-    //   provincia: paciente.provincia,
-    //   provinciaId: paciente.provinciaId,
-    //   provincia_id: paciente.provincia_id,
-    //   distrito: paciente.distrito,
-    //   distritoId: paciente.distritoId,
-    //   distrito_id: paciente.distrito_id,
-    //   distrito_nome: paciente.distrito_nome,
-    //   bairro: paciente.bairro,
-    //   bairroId: paciente.bairroId,
-    //   bairro_id: paciente.bairro_id,
-    //   bairro_nome: paciente.bairro_nome,
-      
-    //   // Outros
-    //   genero: paciente.genero,
-    //   estadoCivil: paciente.estado_civil,
-    //   celular: paciente.celular,
-    //   celularAlternativo: paciente.celular_alternativo,
-    //   email: paciente.email,
-      
-    //   // Datas
-    //   dataNascimento: paciente.data_nascimento,
-    //   dataNascimentoCamel: paciente.dataNascimento
-    // });
     
     // Garantir que os campos de data sejam dayjs ou null
     const pacienteProcessado = {
@@ -3737,6 +3501,15 @@ const CadastroPaciente = () => {
   };
 
   const confirmarExame = async (values) => {
+    const valorExames = calcularValorExames(values.tipoExame);
+    if (valorExames === null) {
+      notification.warning({
+        message: 'Preço de exame indisponível',
+        description: 'Um ou mais exames não possuem preço configurado no servidor.'
+      });
+      return;
+    }
+
     // Criar um utente com os exames solicitados e status pendente de pagamento
     const utenteComExames = {
       ...selectedUtente,
@@ -3744,7 +3517,7 @@ const CadastroPaciente = () => {
       observacoes: values.observacoes || '',
       statusPagamento: 'pendente', // Status pendente para pagamento
       dataSolicitacao: new Date().toLocaleString(),
-      valorExames: calcularValorExames(values.tipoExame) // Calcular valor total
+      valorExames
     };
 
     // Atualizar usando hook (substituir o utente existente)
@@ -3756,22 +3529,10 @@ const CadastroPaciente = () => {
     }
 
     // Mostrar mensagem de sucesso
-    const examesNomes = values.tipoExame.map(exame => {
-      const exameNome = {
-        'hemograma': 'Hemograma Completo',
-        'glicemia': 'Glicemia',
-        'colesterol': 'Perfil Lipídico',
-        'urina': 'Exame de Urina',
-        'fezes': 'Exame de Fezes',
-        'hepatite': 'Marcadores de Hepatite',
-        'hiv': 'Teste de HIV',
-        'pcr': 'PCR',
-        'ureia': 'Ureia e Creatinina',
-        'tsh': 'TSH e Hormônios Tireoidianos',
-        'outro': 'Outro'
-      }[exame] || exame;
-      return exameNome;
-    }).join(', ');
+    const examesNomes = values.tipoExame
+      .map(exameId => tiposExames.find(exame => sameId(exame.id, exameId))?.nome)
+      .filter(Boolean)
+      .join(', ');
 
     message.success({
       content: (
@@ -3794,21 +3555,14 @@ const CadastroPaciente = () => {
 
   // Função para calcular o valor dos exames
   const calcularValorExames = (exames) => {
-    const precos = {
-      'hemograma': 150,
-      'glicemia': 80,
-      'colesterol': 120,
-      'urina': 100,
-      'fezes': 90,
-      'hepatite': null, // Valor deve vir do backend
-      'hiv': 250,
-      'pcr': 200,
-      'ureia': 110,
-      'tsh': 180,
-      'outro': 100
-    };
-    
-    return exames.reduce((total, exame) => total + (precos[exame] || 100), 0);
+    let total = 0;
+    for (const exameId of exames) {
+      const exame = tiposExames.find(item => sameId(item.id, exameId));
+      const preco = exame?.preco ?? exame?.valor ?? exame?.valor_default;
+      if (preco === undefined || preco === null || Number.isNaN(Number(preco))) return null;
+      total += Number(preco);
+    }
+    return total;
   };
 
   // Função para abrir o modal de histórico de exames
@@ -3836,39 +3590,10 @@ const CadastroPaciente = () => {
       return;
     }
 
-    // Criar entrada para exames pendentes no laboratório
-    const exameLaboratorio = {
-      id: Date.now(),
-      pacienteId: selectedUtente.id,
-      nid: selectedUtente.nid || selectedUtente.bilheteIdentidade, // USAR NID GERADO ou BI como fallback
-      nome: selectedUtente.nome,
-      apelido: selectedUtente.apelido,
-      dataNascimento: selectedUtente.dataNascimento,
-      hospitalProveniencia: selectedUtente.hospitalProveniencia,
-      tipoDocumento: selectedUtente.tipoDocumento,
-      bilheteIdentidade: selectedUtente.bilheteIdentidade,
-      celular: selectedUtente.celular,
-      tipoUtente: 'autonomo', // CRÍTICO: Identificar como utente autônomo
-      examesSolicitados: Array.isArray(selectedUtente.examesSolicitados) ? 
-        selectedUtente.examesSolicitados : [selectedUtente.examesSolicitados],
-      observacoes: selectedUtente.observacoes,
-      dataSolicitacao: selectedUtente.dataSolicitacao,
-      status: 'pago_laboratorio', // Status para ir direto ao laboratório
-      statusPagamento: 'pago',
-      solicitadoPor: 'Utente Autônomo',
-      prioridade: 'Normal',
-      dataColeta: new Date().toLocaleString(),
-      valorPago: values.valor,
-      metodoPagamento: values.metodoPagamento,
-      dataPagamento: utenteAtualizado.dataPagamento
-    };
-
-    // TODO: Refatorar para usar API de solicitações de exames
-    // setExamesPendentes([...examesPendentes, exameLaboratorio]);
-
-    message.success({
-      content: `Pagamento de MT ${values.valor} processado via ${values.metodoPagamento}! Exames transferidos para o laboratório.`,
-      duration: 4
+    notification.success({
+      message: 'Pagamento registado',
+      description: `Pagamento de MT ${values.valor} processado com sucesso.`,
+      duration: 5
     });
 
     setIsPagamentoExameModalVisible(false);
@@ -3887,7 +3612,7 @@ const CadastroPaciente = () => {
           fontWeight: 'bold', 
           color: '#1890ff',
           backgroundColor: '#f0f9ff',
-          padding: '2px 6px',
+          padding: '4px 8px !important',
           borderRadius: '4px',
           fontSize: '12px'
         }}>
@@ -3961,7 +3686,7 @@ const CadastroPaciente = () => {
         
         let tipoDocNome = '';
         if (tipoDocId && Array.isArray(patientServiceTiposDocumentos)) {
-          const tipoDoc = patientServiceTiposDocumentos.find(t => t.id === tipoDocId);
+          const tipoDoc = patientServiceTiposDocumentos.find(t => sameId(t.id, tipoDocId));
           tipoDocNome = tipoDoc?.nome || tipoDoc?.codigo || `Tipo ${tipoDocId}`;
         }
         
@@ -4337,21 +4062,21 @@ const CadastroPaciente = () => {
         const status = record.status;
         const statusConfig = {
           // Status real devolvido pela API
-          'solicitado':       { color: '#ff9500', text: 'Pendente Aprovação' },
+          'solicitado':       { color: '#fa8c16', text: 'Pendente Aprovação' },
           // Valores canónicos (após normalização)
-          'pending':          { color: '#ff9500', text: 'Pendente Aprovação' },
+          'pending':          { color: '#fa8c16', text: 'Pendente Aprovação' },
           'confirmada':       { color: '#1890ff', text: 'Confirmada - Aguard. Pagamento' },
           'paga':             { color: '#52c41a', text: 'Paga - Agendar Colheita' },
           'agendada':         { color: '#722ed1', text: 'Colheita Agendada' },
-          'concluida':        { color: '#28a745', text: 'Concluída' },
+          'concluida':        { color: '#52c41a', text: 'Concluída' },
           'cancelada':        { color: '#ff4d4f', text: 'Cancelada' },
           // Aliases
-          'pendente':         { color: '#ff9500', text: 'Pendente Aprovação' },
+          'pendente':         { color: '#fa8c16', text: 'Pendente Aprovação' },
           'confirmado':       { color: '#1890ff', text: 'Confirmado - Aguard. Pagamento' },
           'aceito':           { color: '#1890ff', text: 'Aceito - Aguard. Pagamento' },
           'pago':             { color: '#52c41a', text: 'Pago - Agendar Colheita' },
-          'pago_laboratorio': { color: '#28a745', text: 'Liberado para Laboratório' },
-          'concluido':        { color: '#28a745', text: 'Concluída' },
+          'pago_laboratorio': { color: '#52c41a', text: 'Liberado para Laboratório' },
+          'concluido':        { color: '#52c41a', text: 'Concluída' },
           'cancelado':        { color: '#ff4d4f', text: 'Cancelada' },
           'rejeitado':        { color: '#ff4d4f', text: 'Rejeitada' },
         };
@@ -4409,7 +4134,7 @@ const CadastroPaciente = () => {
                 type="default"
                 size="small"
                 onClick={() => handlePagarExame(record)}
-                style={{ background: '#ff9500', color: 'white', borderColor: '#ff9500' }}
+                style={{ background: '#fa8c16', color: 'white', borderColor: '#fa8c16' }}
               >
                 Pagar Exame
               </Button>
@@ -4549,7 +4274,7 @@ const CadastroPaciente = () => {
               <DatePicker
                 style={{ width: '100%' }}
                 format="DD/MM/YYYY"
-                disabledDate={current => current && current > dayjs().endOf('day')}
+                disabledDate={current => current && !current.isBefore(dayjs().startOf('day'), 'day')}
               />
             </Form.Item>
           </Col>
@@ -4643,16 +4368,6 @@ const CadastroPaciente = () => {
     value: tipo.id,
     label: tipo.nome
   })) : [];
-  
-  // Fallback se backend não estiver disponível
-  if (tiposDocumento.length === 0) {
-    tiposDocumento.push(
-      { value: 1, label: 'Bilhete de Identidade' },
-      { value: 2, label: 'Passaporte' },
-      { value: 3, label: 'Cartão de Residência' },
-      { value: 4, label: 'Outro' }
-    );
-  }
   
   // provincias vem do hook useConfigurations - removido hardcoded
 
@@ -4856,23 +4571,6 @@ const CadastroPaciente = () => {
             // Processamento especial para campos de data
             if (field === 'dataNascimento' || field === 'dataValidade') {
               initialValues[field] = getDayjsOrNull(value);
-            } else if (field === 'raca' || field === 'distrito' || field === 'bairro') {
-              // Para campos com labelInValue, mapear ID para {value, label}
-              const serviceName = field === 'raca' ? 'patientServiceRacas' : field === 'distrito' ? 'patientServiceDistritos' : 'patientServiceBairros';
-              const service = field === 'raca' ? patientServiceRacas : field === 'distrito' ? patientServiceDistritos : patientServiceBairros;
-              const foundItem = Array.isArray(service) ? service.find(item => item.id === value) : null;
-              
-              if (foundItem) {
-                initialValues[field] = {
-                  value: foundItem.id,
-                  label: foundItem.nome
-                };
-                console.log(`  ✅ Campo "${field}" mapeado para:`, initialValues[field]);
-              } else {
-                // Se não encontrar, apenas armazenar o ID (será carregado quando os dados chegarem)
-                initialValues[field] = value;
-                console.log(`  ⚠️ Campo "${field}" não encontrado no serviço, mantendo ID: ${value}`);
-              }
             } else {
               initialValues[field] = value;
             }
@@ -4889,7 +4587,7 @@ const CadastroPaciente = () => {
         'typeof': typeof initialValues.tipoUtente,
         'isNumber': !isNaN(initialValues.tipoUtente),
         'parseInt': parseInt(initialValues.tipoUtente),
-        'tipoUtenteObjFromService': patientServiceTiposUtentes?.find(t => t.id === parseInt(initialValues.tipoUtente))
+        'tipoUtenteObjFromService': getTipoUtenteById(initialValues.tipoUtente)
       });
       acompanhanteFormRef.setFieldsValue(initialValues);
       
@@ -4973,7 +4671,7 @@ const CadastroPaciente = () => {
                   <Col xs={24} sm={12} md={8} lg={8} xl={8}><b>Tipo de Documento:</b> {
                     // Priorizar nome do backend
                     currentPaciente.tipo_documento_nome ||
-                    patientServiceTiposDocumentos.find(t => t.id === (currentPaciente.tipoDocumentoId || currentPaciente.tipo_documento_id))?.nome || 
+                    patientServiceTiposDocumentos.find(t => sameId(t.id, (currentPaciente.tipoDocumentoId || currentPaciente.tipo_documento_id)))?.nome || 
                     tiposDocumento.find(t => t.value === (currentPaciente.tipoDocumentoId || currentPaciente.tipo_documento_id))?.label || 
                     (currentPaciente.tipoDocumentoId || currentPaciente.tipo_documento_id)
                   }</Col>
@@ -5014,8 +4712,8 @@ const CadastroPaciente = () => {
                     (() => {
                       const racaId = currentPaciente.racaId || currentPaciente.raca_id;
                       if (Array.isArray(patientServiceRacas)) {
-                        const raca = patientServiceRacas.find(r => r.id === racaId);
-                        return raca?.nome || `Raça ${racaId}`;
+                        const raca = patientServiceRacas.find(r => sameId(r.id, racaId));
+                        return raca?.nome || 'Não informado';
                       }
                       return racaId;
                     })()
@@ -5031,8 +4729,8 @@ const CadastroPaciente = () => {
                     (() => {
                       const provinciaId = currentPaciente.provinciaId || currentPaciente.provincia_id;
                       if (Array.isArray(patientServiceProvincias)) {
-                        const provincia = patientServiceProvincias.find(p => p.id === provinciaId);
-                        return provincia?.nome || `Província ${provinciaId}`;
+                        const provincia = patientServiceProvincias.find(p => sameId(p.id, provinciaId));
+                        return provincia?.nome || 'Não informado';
                       }
                       return provinciaId;
                     })()
@@ -5047,12 +4745,11 @@ const CadastroPaciente = () => {
                       console.log('🏙️ Buscando distrito:', { distritoId, distrito_nome: currentPaciente.distrito_nome });
                       
                       if (Array.isArray(patientServiceDistritos) && patientServiceDistritos.length > 0) {
-                        const distrito = patientServiceDistritos.find(d => d.id === distritoId);
-                        console.log('🔍 Distrito encontrado:', distrito);
-                        return distrito?.nome || `Distrito ID: ${distritoId}`;
+                        const distrito = patientServiceDistritos.find(d => sameId(d.id, distritoId));
+                        return distrito?.nome || 'Não informado';
                       }
                       
-                      return `Distrito ID: ${distritoId}`;
+                      return 'Não informado';
                     })()
                   }</Col>
                 )}
@@ -5065,12 +4762,11 @@ const CadastroPaciente = () => {
                       console.log('🏠 Buscando bairro:', { bairroId, bairro_nome: currentPaciente.bairro_nome });
                       
                       if (Array.isArray(patientServiceBairros) && patientServiceBairros.length > 0) {
-                        const bairro = patientServiceBairros.find(b => b.id === bairroId);
-                        console.log('🔍 Bairro encontrado:', bairro);
-                        return bairro?.nome || `Bairro ID: ${bairroId}`;
+                        const bairro = patientServiceBairros.find(b => sameId(b.id, bairroId));
+                        return bairro?.nome || 'Não informado';
                       }
                       
-                      return `Bairro ID: ${bairroId}`;
+                      return 'Não informado';
                     })()
                   }</Col>
                 )}
@@ -5127,7 +4823,7 @@ const CadastroPaciente = () => {
                     style={{ width: '100%' }}
                     placeholder="Selecione a data de nascimento"
                     disabled={isFieldFilledAndLocked('dataNascimento')}
-                    disabledDate={current => current && current > dayjs().endOf('day')}
+                    disabledDate={current => current && !current.isBefore(dayjs().startOf('day'), 'day')}
                   />
                 </Form.Item>
               </Col>
@@ -5162,7 +4858,8 @@ const CadastroPaciente = () => {
                     placeholder="Selecione a raça"
                     loading={loadingPatientServiceConfig}
                     disabled={isFieldFilledAndLocked('raca')}
-                    labelInValue
+                    showSearch
+                    optionFilterProp="children"
                   >
                     {Array.isArray(patientServiceRacas) && patientServiceRacas.map(raca => (
                       <Option key={raca.id} value={raca.id} label={raca.nome}>
@@ -5216,10 +4913,11 @@ const CadastroPaciente = () => {
                 <Form.Item name="distrito" label="Distrito" rules={[{ required: true }]}>
                   <Select 
                     placeholder="Selecione o distrito"
-                    onChange={(value) => handleDistritoChange(value?.value || value, form)}
+                    onChange={(value) => handleDistritoChange(value, form)}
                     loading={loadingDistritos}
                     disabled={isFieldFilledAndLocked('distrito') || (patientServiceDistritos.length === 0 && !loadingDistritos)}
-                    labelInValue
+                    showSearch
+                    optionFilterProp="children"
                   >
                     {Array.isArray(patientServiceDistritos) && patientServiceDistritos.map(dist => (
                       <Option key={dist.id || dist} value={dist.id || dist} label={dist.nome || dist}>
@@ -5243,7 +4941,8 @@ const CadastroPaciente = () => {
                     placeholder="Selecione o bairro"
                     loading={loadingBairros}
                     disabled={isFieldFilledAndLocked('bairro') || (patientServiceBairros.length === 0 && !loadingBairros)}
-                    labelInValue
+                    showSearch
+                    optionFilterProp="children"
                   >
                     {Array.isArray(patientServiceBairros) && patientServiceBairros.map(bairro => (
                       <Option key={bairro.id || bairro} value={bairro.id || bairro} label={bairro.nome || bairro}>
@@ -5414,7 +5113,7 @@ const CadastroPaciente = () => {
                       const tipoUtenteNome = currentPaciente.tipoUtente;
                       
                       if (tipoUtenteId && Array.isArray(patientServiceTiposUtentes)) {
-                        const tipoUtente = patientServiceTiposUtentes.find(t => t.id === tipoUtenteId);
+                        const tipoUtente = getTipoUtenteById(tipoUtenteId);
                         return tipoUtente?.nome || `Tipo ${tipoUtenteId}`;
                       }
                       
@@ -5455,7 +5154,7 @@ const CadastroPaciente = () => {
                     (() => {
                       const unidadeId = currentPaciente.unidadeOrganicaId || currentPaciente.unidade_organica_id;
                       if (unidadeId && Array.isArray(patientServiceUnidadesOrganicas)) {
-                        const unidade = patientServiceUnidadesOrganicas.find(u => u.id === unidadeId);
+                        const unidade = patientServiceUnidadesOrganicas.find(u => sameId(u.id, unidadeId));
                         return unidade?.nome || `Unidade ${unidadeId}`;
                       }
                       return currentPaciente.unidadeOrganica || unidadeId;
@@ -5509,7 +5208,7 @@ const CadastroPaciente = () => {
                 console.log("Tipo de utente selecionado:", tipoUtenteIdSelecionado);
                 
                 // Buscar o tipo de utente pelo ID para verificar o código
-                const tipoUtenteSelecionado = patientServiceTiposUtentes.find(t => t.id === tipoUtenteIdSelecionado);
+                const tipoUtenteSelecionado = getTipoUtenteById(tipoUtenteIdSelecionado);
                 const codigoTipo = tipoUtenteSelecionado?.codigo;
                 
                 // Verificar se precisa unidade orgânica (por código ou ID)
@@ -5559,7 +5258,7 @@ const CadastroPaciente = () => {
                 const tipoUtenteIdSelecionado = getFieldValue('tipoUtente');
                 
                 // Buscar o tipo de utente pelo ID para verificar o código
-                const tipoUtenteSelecionado = patientServiceTiposUtentes.find(t => t.id === tipoUtenteIdSelecionado);
+                const tipoUtenteSelecionado = getTipoUtenteById(tipoUtenteIdSelecionado);
                 const codigoTipo = tipoUtenteSelecionado?.codigo;
                 
                 // Verificar se é familiar (FAM-DOC, FAM-FUNC, FAM-INV)
@@ -5603,27 +5302,13 @@ const CadastroPaciente = () => {
                             setUserHasChangedFormValues(true);
                           }}
                         >
-                          {Array.isArray(patientServiceUnidadesOrganicas) && patientServiceUnidadesOrganicas.length > 0 ? (
-                            patientServiceUnidadesOrganicas.map(unidade => (
-                              <Option key={unidade.id} value={unidade.id}>
-                                {unidade.nome}
-                              </Option>
-                            ))
-                          ) : (
-                            <>
-                              <Option value="1">Faculdade de Medicina</Option>
-                              <Option value="2">Faculdade de Direito</Option>
-                              <Option value="3">Faculdade de Engenharia</Option>
-                              <Option value="4">Faculdade de Educação</Option>
-                              <Option value="5">Faculdade de Veterinária</Option>
-                              <Option value="6">Faculdade de Agronomia e Engenharia Florestal</Option>
-                              <Option value="7">Faculdade de Economia</Option>
-                              <Option value="8">Faculdade de Letras e Ciências Sociais</Option>
-                              <Option value="9">Faculdade de Ciências</Option>
-                              <Option value="10">Escola Superior de Hotelaria e Turismo</Option>
-                              <Option value="11">Escola de Comunicação e Artes</Option>
-                              <Option value="12">Escola Superior de Ciências do Desporto</Option>
-                            </>
+                          {patientServiceUnidadesOrganicas.map(unidade => (
+                            <Option key={unidade.id} value={unidade.id}>
+                              {unidade.nome}
+                            </Option>
+                          ))}
+                          {patientServiceUnidadesOrganicas.length === 0 && (
+                            <Option disabled>Nenhuma unidade orgânica disponível</Option>
                           )}
                         </Select>
                       </Form.Item>
@@ -5640,7 +5325,8 @@ const CadastroPaciente = () => {
             }>
               {({ getFieldValue }) => {
                 const tipoUtente = getFieldValue('tipoUtente');
-                const isDocente = tipoUtente === 'docente';
+                const tipoSelecionado = patientServiceTiposUtentes.find(tipo => sameId(tipo.id, tipoUtente));
+                const isDocente = tipoSelecionado?.codigo === 'DOC';
 
                 return !isFieldFilledAndLocked('unidadeOrganicaDocente') && isDocente ? (
                   <Col xs={24} sm={24} md={12} lg={12} xl={12}>
@@ -5650,27 +5336,13 @@ const CadastroPaciente = () => {
                       rules={[{ required: true, message: 'Por favor, selecione as faculdades onde leciona' }]}
                     >
                       <Select mode="multiple" placeholder="Selecione as faculdades onde leciona">
-                        {Array.isArray(patientServiceUnidadesOrganicas) && patientServiceUnidadesOrganicas.length > 0 ? (
-                          patientServiceUnidadesOrganicas.map(unidade => (
-                            <Option key={unidade.id} value={unidade.codigo || unidade.id}>
-                              {unidade.nome}
-                            </Option>
-                          ))
-                        ) : (
-                          <>
-                            <Option value="FM">Faculdade de Medicina</Option>
-                            <Option value="FD">Faculdade de Direito</Option>
-                            <Option value="FENG">Faculdade de Engenharia</Option>
-                            <Option value="FACED">Faculdade de Educação</Option>
-                            <Option value="FAVET">Faculdade de Veterinária</Option>
-                            <Option value="FAEF">Faculdade de Agronomia e Engenharia Florestal</Option>
-                            <Option value="FEC">Faculdade de Economia</Option>
-                            <Option value="FLCS">Faculdade de Letras e Ciências Sociais</Option>
-                            <Option value="FC">Faculdade de Ciências</Option>
-                            <Option value="ESHTI">Escola Superior de Hotelaria e Turismo</Option>
-                            <Option value="ECA">Escola de Comunicação e Artes</Option>
-                            <Option value="ESCIDE">Escola Superior de Ciências do Desporto</Option>
-                          </>
+                        {patientServiceUnidadesOrganicas.map(unidade => (
+                          <Option key={unidade.id} value={unidade.id}>
+                            {unidade.nome}
+                          </Option>
+                        ))}
+                        {patientServiceUnidadesOrganicas.length === 0 && (
+                          <Option disabled>Nenhuma unidade orgânica disponível</Option>
                         )}
                       </Select>
                     </Form.Item>
@@ -5897,55 +5569,7 @@ const CadastroPaciente = () => {
     
     setAcompanhanteStep(acompanhanteStep - 1);
   }; 
-  // const handleAcompanhanteFinish = async () => { // REMOVIDO: não utilizado
-  //   try {
-  //     const values = await acompanhanteFormRef.validateFields(acompanhanteSteps[acompanhanteStep].fields);
-  //
-  //     // Processa campos de data para garantir que são objetos dayjs válidos
-  //     const processedValues = { ...values };
-  //     if (processedValues.dataNascimento) {
-  //       processedValues.dataNascimento = getDayjsOrNull(processedValues.dataNascimento);
-  //     }
-  //     if (processedValues.dataValidade) {
-  //       processedValues.dataValidade = getDayjsOrNull(processedValues.dataValidade);
-  //     }
-  //
-  //     const allValues = { ...acompanhanteFormValues, ...processedValues };
-  //
-  //     // Converte objetos dayjs para Date antes de salvar
-  //     const finalValues = { ...allValues };
-  //     if (finalValues.dataNascimento && finalValues.dataNascimento.toDate) {
-  //       finalValues.dataNascimento = finalValues.dataNascimento.toDate();
-  //     }
-  //     if (finalValues.dataValidade && finalValues.dataValidade.toDate) {
-  //       finalValues.dataValidade = finalValues.dataValidade.toDate();
-  //     }
-  //
-  //     // Atualiza o registro do paciente com os dados da configuração
-  //     const updatedPacientes = pacientes.map((p) => {
-  //       if (p.id === currentPaciente.id) {
-  //         // Mescla os dados do paciente com os novos dados do formulário
-  //         return { ...p, ...finalValues };
-  //       }
-  //       return p;
-  //     });
-  //
-  //     // Atualiza o estado global dos pacientes
-  //     setPacientes(updatedPacientes);
-  //
-  //     // Fecha o modal e limpa o formulário
-  //     setIsAcompanhanteModalVisible(false);
-  //     acompanhanteFormRef.resetFields();
-  //     setAcompanhanteStep(0);
-  //     setAcompanhanteFormValues({});
-  //     message.success('Dados do utente salvos com sucesso!');
-  //   } catch (err) {
-  //     console.error('Erro ao salvar dados do utente:', err);
-  //     message.error('Erro ao salvar dados. Verifique os campos do formulário.');
-  //   }
-  // };
 
-  //A Funcao que lida com o  modal do formulario da configuracao do utente 
   const renderAcompanhanteModal = (isEdit = false) => {
     // Determine which modal is being rendered (edit or configure)
     // const isVisible = isEdit ? isEditModalVisible : isAcompanhanteModalVisible; // REMOVIDO: não utilizado
@@ -6077,7 +5701,7 @@ const CadastroPaciente = () => {
           valorAtualFormulario: currentFormValues.tipoUtente,
           mudou: valorInicialTipoUtente !== currentFormValues.tipoUtente,
           patientServiceTiposUtentes: patientServiceTiposUtentes?.length,
-          tipoUtenteObjAtual: patientServiceTiposUtentes?.find(t => t.id === currentFormValues.tipoUtente)
+          tipoUtenteObjAtual: getTipoUtenteById(currentFormValues.tipoUtente)
         });
         
         const values = await acompanhanteFormRef.validateFields(acompanhanteSteps[acompanhanteStep].fields);
@@ -6172,41 +5796,19 @@ const CadastroPaciente = () => {
         // ==================== VALIDAÇÃO ROBUSTA TIPO UTENTE (MESMO PADRÃO DO HANDLECREATE E HANDLEEDIT) ====================
 
         if (finalEditValues.tipoUtente !== undefined && finalEditValues.tipoUtente !== null && finalEditValues.tipoUtente !== '') {
-          let tipoUtenteId = finalEditValues.tipoUtente;
-          
-          // Se for string, converter usando o mapeamento robusto do handleCreate
-          if (typeof finalEditValues.tipoUtente === 'string') {
-            const mapeamentoTipoUtente = {
-              'estudanteNaoBolseiro': 1,
-              'estudanteBolseiro': 2,  
-              'estudanteMestrado': 3,
-              'estudanteDoutoramento': 4,
-              'investigador': 5,
-              'docente': 6,
-              'funcionario': 7,
-              'familiarDocente': 8,
-              'familiarFuncionario': 9,
-              'familiarInvestigador': 10,
-              'comunidade': 11
-            };
-            tipoUtenteId = mapeamentoTipoUtente[finalEditValues.tipoUtente];
-          }
+          const tipoUtenteId = finalEditValues.tipoUtente;
           
           // Validar se existe no backend (mesmo padrão do handleCreate)
           if (tipoUtenteId && !isNaN(tipoUtenteId)) {
-            const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => t.id === parseInt(tipoUtenteId));
+            const tipoUtenteExiste = patientServiceTiposUtentes?.find(t => sameId(t.id, tipoUtenteId));
             if (tipoUtenteExiste) {
               camposConvertidos.tipo_utente_id = parseInt(tipoUtenteId, 10);
             } else {
-              camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
-            }
-          } else {
-            if (isEdit && editingPaciente) {
-              camposConvertidos.tipo_utente_id = editingPaciente?.tipo_utente_id || editingPaciente?.tipoUtenteId || 1;
-            } else if (currentPaciente) {
-              camposConvertidos.tipo_utente_id = currentPaciente?.tipo_utente_id || currentPaciente?.tipoUtenteId || 1;
-            } else {
-              camposConvertidos.tipo_utente_id = patientServiceTiposUtentes?.[0]?.id || 1;
+              notification.warning({
+                message: 'Tipo de utente inválido',
+                description: 'Selecione novamente o tipo de utente.'
+              });
+              return;
             }
           }
         }
@@ -6229,7 +5831,7 @@ const CadastroPaciente = () => {
           
           // Buscar nome do bairro para log
           const bairroNome = Array.isArray(patientServiceBairros) 
-            ? patientServiceBairros.find(b => b.id === bairroId)?.nome 
+            ? patientServiceBairros.find(b => sameId(b.id, bairroId))?.nome 
             : 'Desconhecido';
             
           console.log('🎯 BAIRRO mapeado:', finalEditValues.bairro, '→', camposConvertidos.bairro_id, `(${bairroNome})`);
@@ -6328,7 +5930,7 @@ const CadastroPaciente = () => {
               <Button type="default" style={{ backgroundColor: '#6c757d', color: 'white', borderColor: '#6c757d' }} onClick={handleAcompanhantePrev}>Anterior</Button>
             )}
             {acompanhanteStep < acompanhanteSteps.length - 1 && (
-              <Button type="default" style={{ backgroundColor: '#28a745', color: 'white', borderColor: '#28a745' }} onClick={handleAcompanhanteNext}>Próximo</Button>
+              <Button type="default" style={{ backgroundColor: '#52c41a', color: 'white', borderColor: '#52c41a' }} onClick={handleAcompanhanteNext}>Próximo</Button>
             )}
             {acompanhanteStep === acompanhanteSteps.length - 1 && (
               <Button type="primary" onClick={handleFinish}>{isEdit ? 'Atualizar' : 'Salvar'}</Button>
@@ -6436,6 +6038,7 @@ const CadastroPaciente = () => {
           setCurrentStep(currentStep + 1);
         }
       } catch (errorInfo) {
+        showFormValidationError(errorInfo);
       }
     };
 
@@ -6484,6 +6087,7 @@ const CadastroPaciente = () => {
         }
       } catch (errorInfo) {
         console.error('❌ Erro na validação do wizard:', errorInfo);
+        showFormValidationError(errorInfo);
       }
     };
 
@@ -6496,27 +6100,23 @@ const CadastroPaciente = () => {
         ],
         content: (
 
-          <Row gutter={16}>
+          <Row gutter={6}>
             <Col span={12}>
               <Form.Item 
                 name="nid" 
                 label="NID (Número de Identificação)" 
-                rules={[
-                  { 
-                    pattern: /^\d{4}\/\d{4}$/, 
-                    message: 'Formato inválido. Use: 0000/2025' 
-                  }
-                ]}
+                rules={[{ validator: validateNid }]}
+                validateTrigger={['onChange', 'onBlur']}
                 tooltip="Opcional. Se não for fornecido, será gerado automaticamente. Formato: 0000/2025"
               > 
                 <Input 
-                  placeholder="0000/2025 (opcional)" 
+                  placeholder="0000/2026 (opcional)" 
                   maxLength={9}
                   onInput={(e) => {
                     // Remove tudo que não é dígito
                     let value = e.target.value.replace(/\D/g, '');
                     
-                    // Formata: 0000/2025
+                    // Formata: 0000/2026
                     if (value.length >= 4) {
                       value = value.slice(0, 4) + '/' + value.slice(4, 8);
                     }
@@ -6525,7 +6125,7 @@ const CadastroPaciente = () => {
                     e.target.value = value;
                     
                     // Atualiza o formulário
-                    acompanhanteForm.setFieldsValue({ nid: value });
+                    formRef.setFieldsValue({ nid: value });
                   }}
                 />
               </Form.Item>
@@ -6537,7 +6137,7 @@ const CadastroPaciente = () => {
                   style={{ width: '100%' }}
                   format="DD/MM/YYYY"
                   placeholder="Selecione a data de nascimento"
-                  disabledDate={current => current && current > dayjs().endOf('day')}
+                  disabledDate={current => current && !current.isBefore(dayjs().startOf('day'), 'day')}
                 />
               </Form.Item>
               <Form.Item name="raca" label="Raça" rules={[{ required: true, message: 'Por favor, selecione a raça' }]}> 
@@ -6555,25 +6155,7 @@ const CadastroPaciente = () => {
                   )}
                 </Select>
               </Form.Item>
-
-              {/* Select de tipo de utente */}
-              <Form.Item name="tipoUtente" label="Tipo de Utente" rules={[{ required: true, message: 'Por favor, selecione o tipo de utente' }]}> 
-                <Select placeholder="Selecione o tipo de utente" loading={loadingPatientServiceConfig}>
-                  {Array.isArray(patientServiceTiposUtentes) && patientServiceTiposUtentes.length > 0 ? (
-                    patientServiceTiposUtentes.map(tipo => (
-                      <Option key={tipo.id} value={tipo.id}>{tipo.nome}</Option>
-                    ))
-                  ) : (
-                    loadingPatientServiceConfig ? (
-                      <Option disabled>Carregando tipos de utente...</Option>
-                    ) : (
-                      <Option disabled>Nenhum tipo de utente disponível</Option>
-                    )
-                  )}
-                </Select>
-              </Form.Item>
-
-              {/* Campo para unidade orgânica para Estudante/Funcionário/Investigador */}
+                            {/* Campo para unidade orgânica para Estudante/Funcionário/Investigador */}
               <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
                 prevValues.tipoUtente !== currentValues.tipoUtente
               }>
@@ -6581,7 +6163,7 @@ const CadastroPaciente = () => {
                   const tipoUtenteIdSelecionado = getFieldValue('tipoUtente');
                   
                   // Buscar o tipo de utente pelo ID para verificar o código
-                  const tipoUtenteSelecionado = patientServiceTiposUtentes.find(t => t.id === tipoUtenteIdSelecionado);
+                  const tipoUtenteSelecionado = getTipoUtenteById(tipoUtenteIdSelecionado);
                   const codigoTipo = tipoUtenteSelecionado?.codigo;
                   
                   // Tipos que precisam de unidade orgânica (baseado nos códigos do backend)
@@ -6606,27 +6188,13 @@ const CadastroPaciente = () => {
                         rules={[{ required: true, message: 'Por favor, selecione a unidade orgânica' }]}
                       >
                         <Select placeholder="Selecione a unidade orgânica">
-                          {Array.isArray(patientServiceUnidadesOrganicas) && patientServiceUnidadesOrganicas.length > 0 ? (
-                            patientServiceUnidadesOrganicas.map(unidade => (
-                              <Option key={unidade.id} value={unidade.id}>
-                                {unidade.nome}
-                              </Option>
-                            ))
-                          ) : (
-                            <>
-                              <Option value="1">Faculdade de Medicina</Option>
-                              <Option value="2">Faculdade de Direito</Option>
-                              <Option value="3">Faculdade de Engenharia</Option>
-                              <Option value="4">Faculdade de Educação</Option>
-                              <Option value="5">Faculdade de Veterinária</Option>
-                              <Option value="6">Faculdade de Agronomia e Engenharia Florestal</Option>
-                              <Option value="7">Faculdade de Economia</Option>
-                              <Option value="8">Faculdade de Letras e Ciências Sociais</Option>
-                              <Option value="9">Faculdade de Ciências</Option>
-                              <Option value="10">Escola Superior de Jornalismo</Option>
-                              <Option value="11">Escola Superior de Ciências Náuticas</Option>
-                              <Option value="12">Escola Superior de Ciências Policiais e Criminais</Option>
-                            </>
+                          {patientServiceUnidadesOrganicas.map(unidade => (
+                            <Option key={unidade.id} value={unidade.id}>
+                              {unidade.nome}
+                            </Option>
+                          ))}
+                          {patientServiceUnidadesOrganicas.length === 0 && (
+                            <Option disabled>Nenhuma unidade orgânica disponível</Option>
                           )}
                         </Select>
                       </Form.Item>
@@ -6636,6 +6204,41 @@ const CadastroPaciente = () => {
                 }}
               </Form.Item>
 
+            </Col>
+            <Col span={12}>
+              <Form.Item name="nome" label="Outro Nome" rules={[{ required: true, message: 'Por favor, insira o nome' }]}>
+                <Input placeholder="Nome" />
+              </Form.Item>
+              <Form.Item name="genero" label="Gênero" rules={[{ required: true, message: 'Por favor, selecione o gênero' }]}>
+                <Select placeholder="Selecione o gênero">
+                  <Option value="masculino">Masculino</Option>
+                  <Option value="feminino">Feminino</Option>
+                  <Option value="outro">Outro</Option>
+                </Select>
+              </Form.Item>
+              <Form.Item name="nacionalidade" label="Nacionalidade" rules={[{ required: true, message: 'Por favor, informe a nacionalidade' }]}>
+                <Input placeholder="Nacionalidade" />
+              </Form.Item>
+
+                            {/* Select de tipo de utente */}
+              <Form.Item name="tipoUtente" label="Tipo de Utente" rules={[{ required: true, message: 'Por favor, selecione o tipo de utente' }]}> 
+                <Select placeholder="Selecione o tipo de utente" loading={loadingPatientServiceConfig}>
+                  {Array.isArray(patientServiceTiposUtentes) && patientServiceTiposUtentes.length > 0 ? (
+                    patientServiceTiposUtentes.map(tipo => (
+                      <Option key={tipo.id} value={tipo.id}>{tipo.nome}</Option>
+                    ))
+                  ) : (
+                    loadingPatientServiceConfig ? (
+                      <Option disabled>Carregando tipos de utente...</Option>
+                    ) : (
+                      <Option disabled>Nenhum tipo de utente disponível</Option>
+                    )
+                  )}
+                </Select>
+              </Form.Item>
+
+
+
               {/* Campos condicionais para familiar, baseados apenas no tipoUtente */}
               <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
                 prevValues.tipoUtente !== currentValues.tipoUtente
@@ -6644,7 +6247,7 @@ const CadastroPaciente = () => {
                   const tipoUtenteIdSelecionado = getFieldValue('tipoUtente');
                   
                   // Buscar o tipo de utente pelo ID para verificar o código
-                  const tipoUtenteSelecionado = patientServiceTiposUtentes.find(t => t.id === tipoUtenteIdSelecionado);
+                  const tipoUtenteSelecionado = getTipoUtenteById(tipoUtenteIdSelecionado);
                   const codigoTipo = tipoUtenteSelecionado?.codigo;
                   
                   // Verificar se é familiar (FAM-DOC, FAM-FUNC, FAM-INV)
@@ -6667,27 +6270,13 @@ const CadastroPaciente = () => {
                         rules={[{ required: true, message: 'Por favor, selecione a unidade orgânica do familiar responsável' }]}
                       >
                         <Select placeholder="Selecione a unidade orgânica">
-                          {Array.isArray(patientServiceUnidadesOrganicas) && patientServiceUnidadesOrganicas.length > 0 ? (
-                            patientServiceUnidadesOrganicas.map(unidade => (
-                              <Option key={unidade.id} value={unidade.id}>
-                                {unidade.nome}
-                              </Option>
-                            ))
-                          ) : (
-                            <>
-                              <Option value="1">Faculdade de Medicina</Option>
-                              <Option value="2">Faculdade de Direito</Option>
-                              <Option value="3">Faculdade de Engenharia</Option>
-                              <Option value="4">Faculdade de Educação</Option>
-                              <Option value="5">Faculdade de Veterinária</Option>
-                              <Option value="6">Faculdade de Agronomia e Engenharia Florestal</Option>
-                              <Option value="7">Faculdade de Economia</Option>
-                              <Option value="8">Faculdade de Letras e Ciências Sociais</Option>
-                              <Option value="9">Faculdade de Ciências</Option>
-                              <Option value="10">Escola Superior de Hotelaria e Turismo</Option>
-                              <Option value="11">Escola de Comunicação e Artes</Option>
-                              <Option value="12">Escola Superior de Ciências do Desporto</Option>
-                            </>
+                          {patientServiceUnidadesOrganicas.map(unidade => (
+                            <Option key={unidade.id} value={unidade.id}>
+                              {unidade.nome}
+                            </Option>
+                          ))}
+                          {patientServiceUnidadesOrganicas.length === 0 && (
+                            <Option disabled>Nenhuma unidade orgânica disponível</Option>
                           )}
                         </Select>
                       </Form.Item>
@@ -6701,9 +6290,10 @@ const CadastroPaciente = () => {
               <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
                 prevValues.tipoUtente !== currentValues.tipoUtente
               }>
-                {({ getFieldValue }) => {
-                  const tipoUtente = getFieldValue('tipoUtente') || '';
-                  const isDocente = tipoUtente === 'docente';
+              {({ getFieldValue }) => {
+                const tipoUtente = getFieldValue('tipoUtente') || '';
+                const tipoSelecionado = patientServiceTiposUtentes.find(tipo => sameId(tipo.id, tipoUtente));
+                const isDocente = tipoSelecionado?.codigo === 'DOC';
 
                   return isDocente ? (
                     <Form.Item
@@ -6712,27 +6302,13 @@ const CadastroPaciente = () => {
                       rules={[{ required: true, message: 'Por favor, selecione as faculdades onde leciona' }]}
                     >
                       <Select mode="multiple" placeholder="Selecione as faculdades onde leciona">
-                        {Array.isArray(patientServiceUnidadesOrganicas) && patientServiceUnidadesOrganicas.length > 0 ? (
-                          patientServiceUnidadesOrganicas.map(unidade => (
-                            <Option key={unidade.id} value={unidade.codigo || unidade.id}>
-                              {unidade.nome}
-                            </Option>
-                          ))
-                        ) : (
-                          <>
-                            <Option value="FM">Faculdade de Medicina</Option>
-                            <Option value="FD">Faculdade de Direito</Option>
-                            <Option value="FENG">Faculdade de Engenharia</Option>
-                            <Option value="FACED">Faculdade de Educação</Option>
-                            <Option value="FAVET">Faculdade de Veterinária</Option>
-                            <Option value="FAEF">Faculdade de Agronomia e Engenharia Florestal</Option>
-                            <Option value="FEC">Faculdade de Economia</Option>
-                            <Option value="FLCS">Faculdade de Letras e Ciências Sociais</Option>
-                            <Option value="FC">Faculdade de Ciências</Option>
-                            <Option value="ESHTI">Escola Superior de Hotelaria e Turismo</Option>
-                            <Option value="ECA">Escola de Comunicação e Artes</Option>
-                            <Option value="ESCIDE">Escola Superior de Ciências do Desporto</Option>
-                          </>
+                        {patientServiceUnidadesOrganicas.map(unidade => (
+                          <Option key={unidade.id} value={unidade.id}>
+                            {unidade.nome}
+                          </Option>
+                        ))}
+                        {patientServiceUnidadesOrganicas.length === 0 && (
+                          <Option disabled>Nenhuma unidade orgânica disponível</Option>
                         )}
                       </Select>
                     </Form.Item>
@@ -6743,26 +6319,8 @@ const CadastroPaciente = () => {
               {/* Campo para sector de trabalho quando funcionário é selecionado */}
               {/* Campo para funcionário removido conforme solicitado */}      {/* Campo para profissão quando tipo utente é comunidade */}
               {/* Campo de profissão removido conforme solicitado */}
-            </Col>
-            <Col span={12}>
-              <Form.Item name="nome" label="Outro Nome" rules={[{ required: true, message: 'Por favor, insira o nome' }]}>
-                <Input placeholder="Nome" />
-              </Form.Item>
-              <Form.Item name="genero" label="Gênero" rules={[{ required: true, message: 'Por favor, selecione o gênero' }]}>
-                <Select placeholder="Selecione o gênero">
-                  <Option value="masculino">Masculino</Option>
-                  <Option value="feminino">Feminino</Option>
-                  <Option value="outro">Outro</Option>
-                </Select>
-              </Form.Item>
-              <Form.Item name="nacionalidade" label="Nacionalidade" rules={[{ required: true, message: 'Por favor, selecione a nacionalidade' }]}>
-                <Select placeholder="Selecione a nacionalidade" showSearch>
-                  <Option value="Mocambicana">Moçambicana</Option>
-                  <Option value="Sul-Africana">Sul-Africana</Option>
-                  <Option value="Portuguesa">Portuguesa</Option>
-                  <Option value="Outra">Outra</Option>
-                </Select>
-              </Form.Item>
+
+
             </Col>
           </Row>
         ),
@@ -6795,6 +6353,30 @@ const CadastroPaciente = () => {
                   )}
                 </Select>
               </Form.Item>
+              <Form.Item name="bairro" label="Bairro" rules={[{ required: true, message: 'Por favor, selecione o bairro' }]}>
+                <Select
+                  placeholder="Selecione o bairro"
+                  loading={loadingBairros}
+                  disabled={patientServiceBairros.length === 0 && !loadingBairros}
+                >
+                  {Array.isArray(patientServiceBairros) && patientServiceBairros.map(bairro => (
+                    <Option key={bairro.id} value={bairro.id}>
+                      {bairro.nome}
+                    </Option>
+                  ))}
+                  {patientServiceBairros.length === 0 && !loadingBairros && (
+                    <Option disabled>Selecione primeiro um distrito</Option>
+                  )}
+                  {loadingBairros && (
+                    <Option disabled>Carregando bairros...</Option>
+                  )}
+                </Select>
+              </Form.Item>
+              <Form.Item name="avenidaRuaCelula" label="Avenida/Rua/Célula" >
+                <Input placeholder="Avenida/Rua/Célula" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
               <Form.Item name="distrito" label="Distrito" rules={[{ required: true, message: 'Por favor, selecione o distrito' }]}>
                 <Select
                   placeholder="Selecione o distrito"
@@ -6815,31 +6397,6 @@ const CadastroPaciente = () => {
                   )}
                 </Select>
               </Form.Item>
-              <Form.Item name="avenidaRuaCelula" label="Avenida/Rua/Célula" >
-                <Input placeholder="Avenida/Rua/Célula" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="bairro" label="Bairro" rules={[{ required: true, message: 'Por favor, selecione o bairro' }]}>
-                <Select
-                  placeholder="Selecione o bairro"
-                  loading={loadingBairros}
-                  disabled={patientServiceBairros.length === 0 && !loadingBairros}
-                >
-                  {Array.isArray(patientServiceBairros) && patientServiceBairros.map(bairro => (
-                    <Option key={bairro.id} value={bairro.id}>
-                      {bairro.nome}
-                    </Option>
-                  ))}
-                  {patientServiceBairros.length === 0 && !loadingBairros && (
-                    <Option disabled>Selecione primeiro um distrito</Option>
-                  )}
-                  {loadingBairros && (
-                    <Option disabled>Carregando bairros...</Option>
-                  )}
-                </Select>
-              </Form.Item>
-
               <Form.Item name="numeroCasa" label="Número de Casa" rules={[{ required: true, message: 'Por favor, insira o número da casa' }]}>
                 <Input placeholder="Número da casa" />
               </Form.Item>
@@ -6918,16 +6475,15 @@ const CadastroPaciente = () => {
                             label="Grau de Parentesco"
                             rules={[{ required: true, message: 'Por favor, selecione o grau de parentesco' }]}
                           >
-                            <Select placeholder="Selecione o grau">
-                              <Option value="pai">Pai</Option>
-                              <Option value="mae">Mãe</Option>
-                              <Option value="irmao">Irmão/Irmã</Option>
-                              <Option value="filho">Filho/Filha</Option>
-                              <Option value="conjuge">Cônjuge</Option>
-                              <Option value="avo">Avô/Avó</Option>
-                              <Option value="tio">Tio/Tia</Option>
-                              <Option value="primo">Primo/Prima</Option>
-                              <Option value="outro">Outro</Option>
+                            <Select placeholder="Selecione o grau" loading={loadingPatientServiceConfig}>
+                              {patientServiceGrausParentesco.map(grau => (
+                                <Option key={grau.id} value={grau.codigo || grau.id}>
+                                  {grau.nome}
+                                </Option>
+                              ))}
+                              {patientServiceGrausParentesco.length === 0 && (
+                                <Option disabled>Nenhum grau de parentesco disponível</Option>
+                              )}
                             </Select>
                           </Form.Item>
                         </Col>
@@ -7017,7 +6573,7 @@ const CadastroPaciente = () => {
 
             <div className="steps-action" style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {currentStep < steps.length - 1 && (
-                <Button type="default" style={{ backgroundColor: '#28a745', color: 'white', borderColor: '#28a745' }} onClick={next}>
+                <Button type="default" style={{ backgroundColor: '#52c41a', color: 'white', borderColor: '#52c41a' }} onClick={next}>
                   Próximo
                 </Button>
               )}
@@ -7084,18 +6640,19 @@ const CadastroPaciente = () => {
               size="large"
               showArrow
               allowClear
+              loading={loadingOpcoesClinicas}
             >
-              <Option value="hemograma">Hemograma Completo - MT 150</Option>
-              <Option value="glicemia">Glicemia - MT 80</Option>
-              <Option value="colesterol">Perfil Lipídico (Colesterol) - MT 120</Option>
-              <Option value="urina">Exame de Urina - MT 100</Option>
-              <Option value="fezes">Exame de Fezes - MT 90</Option>
-              <Option value="hepatite">Marcadores de Hepatite</Option>
-              <Option value="hiv">Teste de HIV - MT 250</Option>
-              <Option value="pcr">PCR - MT 200</Option>
-              <Option value="ureia">Ureia e Creatinina - MT 110</Option>
-              <Option value="tsh">TSH e Hormônios Tireoidianos - MT 180</Option>
-              <Option value="outro">Outro - MT 100</Option>
+              {tiposExames.map(exame => {
+                const preco = exame.preco ?? exame.valor ?? exame.valor_default;
+                return (
+                  <Option key={exame.id} value={exame.id}>
+                    {exame.nome}{preco !== undefined && preco !== null ? ` - MT ${preco}` : ''}
+                  </Option>
+                );
+              })}
+              {tiposExames.length === 0 && (
+                <Option disabled>Nenhum exame disponível</Option>
+              )}
             </Select>
           </Form.Item>
 
@@ -7263,14 +6820,31 @@ const CadastroPaciente = () => {
             <Table
               columns={columns}
               dataSource={filteredPacientes}
-              rowKey="id"
+              rowKey={(record) => record.id || record.nid}
+              loading={pacientesLoading}
               pagination={{
-                pageSize: 3,
-                showSizeChanger: false,
-                style: { marginTop: 5 },
+                current: pacientesPagination.current || 1,
+                pageSize: pacientesPagination.pageSize || 10,
+                total: pacientesPagination.total || filteredPacientes.length,
+                showSizeChanger: true,
+                hideOnSinglePage: false,
+                pageSizeOptions: ['5', '10', '20', '50'],
+                position: ['bottomRight'],
+                showTotal: (total, range) => total > 0
+                  ? `${range[0]}-${range[1]} de ${total} utentes`
+                  : '0 utentes',
+                style: { marginTop: 12, marginBottom: 0 },
               }}
+              onChange={(tablePagination) => {
+                carregarPacientes({
+                  page: tablePagination.current || 1,
+                  pageSize: tablePagination.pageSize || pacientesPagination.pageSize || 10,
+                  search: searchText.trim()
+                });
+              }}
+              scroll={{ x: 'max-content' }}
               bordered
-              style={{ borderRadius: 10, overflow: 'hidden' }}
+              style={{ borderRadius: 10 }}
               rowClassName={(record) => {
                 if (record.status === 'alta' || record.status === 'obito' || record.status === 'transferencia' || record.status === 'transferido_especialidade') {
                   return 'linha-terminal';
@@ -7285,7 +6859,7 @@ const CadastroPaciente = () => {
               dataSource={filteredUtentesAutonomos}
               rowKey="id"
               pagination={{
-                pageSize: 3,
+                pageSize: 10,
                 showSizeChanger: false,
                 style: { marginTop: 5 },
               }}
@@ -7346,9 +6920,9 @@ const CadastroPaciente = () => {
             open={isModalVisible}
             onCancel={() => setIsModalVisible(false)}
             footer={null}
-            width={900}
-            style={{ top: 40 }}
-            bodyStyle={{ background: '#f7f9fa', borderRadius: 10 }}
+            width={700}
+            centered
+            bodyStyle={{ background: '#f7f9fa', borderRadius: 10, overflow: 'visible', maxHeight: 'none' }}
           >
             {renderFormContent(false, selectedProvincia, setSelectedProvincia)}
           </Modal>
@@ -7359,7 +6933,7 @@ const CadastroPaciente = () => {
             open={isEditModalVisible}
             onCancel={() => setIsEditModalVisible(false)}
             footer={null}
-            width={800}
+            width={600}
             style={{ top: 40 }}
             bodyStyle={{ background: '#f7f9fa', borderRadius: 10 }}
           >
@@ -7401,12 +6975,14 @@ const CadastroPaciente = () => {
           <Modal
             title={<span style={{ color: '#2d3a4a', fontWeight: 'bold' }}>Estado de Utente</span>}
             open={isTriagemModalVisible}
-            onCancel={() => setIsTriagemModalVisible(false)}
+            onCancel={() => {
+              if (!criandoSolicitacaoTriagem) setIsTriagemModalVisible(false);
+            }}
             footer={[
-              <Button key="cancel" onClick={() => setIsTriagemModalVisible(false)}>
+              <Button key="cancel" disabled={criandoSolicitacaoTriagem} onClick={() => setIsTriagemModalVisible(false)}>
                 Cancelar
               </Button>,
-              <Button key="submit" type="primary" onClick={confirmarTriagem}>
+              <Button key="submit" type="primary" loading={criandoSolicitacaoTriagem} onClick={confirmarTriagem}>
                 Confirmar
               </Button>
             ]}
@@ -7815,7 +7391,7 @@ const CadastroPaciente = () => {
                       </Option>
                     ))
                   ) : (
-                    <Option value="consulta_geral">Consulta Geral</Option>
+                    <Option disabled>Nenhum tipo de consulta disponível</Option>
                   )}
                 </Select>
               </Form.Item>
@@ -7855,19 +7431,7 @@ const CadastroPaciente = () => {
                       </Option>
                     ))
                   ) : (
-                    <>
-                      <Option value="dinheiro">Dinheiro</Option>
-                      <Option value="mpesa">M-Pesa</Option>
-                      <Option value="emola">E-mola</Option>
-                      <Option value="cartao">Cartão de Crédito/Débito</Option>
-                      <Option value="transferencia">Transferência Bancária</Option>
-                      {/* Isenção apenas para estudantes bolseiros */}
-                      {pacientePagamentoRegular?.tipoUtenteId === 2 && (
-                        <Option value="isencao">
-                          Isenção <span style={{ color: '#52c41a' }}>(Valor 0)</span>
-                        </Option>
-                      )}
-                    </>
+                    <Option disabled>Nenhum método de pagamento disponível</Option>
                   )}
                 </Select>
               </Form.Item>
@@ -8057,35 +7621,9 @@ const CadastroPaciente = () => {
                 </div>
                 <div style={{ marginLeft: 16 }}>
                   {selectedUtente?.examesSolicitados?.map((exame, index) => {
-                    const exameNome = {
-                      'hemograma': 'Hemograma Completo',
-                      'glicemia': 'Glicemia',
-                      'colesterol': 'Perfil Lipídico (Colesterol)',
-                      'urina': 'Exame de Urina',
-                      'fezes': 'Exame de Fezes',
-                      'hepatite': 'Marcadores de Hepatite',
-                      'hiv': 'Teste de HIV',
-                      'pcr': 'PCR',
-                      'ureia': 'Ureia e Creatinina',
-                      'tsh': 'TSH e Hormônios Tireoidianos',
-                      'outro': 'Outro'
-                    }[exame] || exame;
-                    
-                    const precos = {
-                      'hemograma': 150,
-                      'glicemia': 80,
-                      'colesterol': 120,
-                      'urina': 100,
-                      'fezes': 90,
-                      'hepatite': null, // Valor deve vir do backend
-                      'hiv': 250,
-                      'pcr': 200,
-                      'ureia': 110,
-                      'tsh': 180,
-                      'outro': 100
-                    };
-                    
-                    const preco = precos[exame] || 100;
+                    const tipoExame = tiposExames.find(item => sameId(item.id, exame));
+                    const exameNome = tipoExame?.nome || 'Exame não encontrado';
+                    const preco = tipoExame?.preco ?? tipoExame?.valor ?? tipoExame?.valor_default;
                     
                     return (
                       <div key={index} style={{ 
@@ -8098,7 +7636,9 @@ const CadastroPaciente = () => {
                         border: '1px solid #e8e8e8'
                       }}>
                         <span style={{ color: '#333', fontSize: 14 }}>{exameNome}</span>
-                        <span style={{ color: '#d4621b', fontWeight: 'bold', fontSize: 14 }}>MT {preco}</span>
+                        <span style={{ color: '#d4621b', fontWeight: 'bold', fontSize: 14 }}>
+                          {preco !== undefined && preco !== null ? `MT ${preco}` : 'Preço não configurado'}
+                        </span>
                       </div>
                     );
                   })}
@@ -8145,13 +7685,15 @@ const CadastroPaciente = () => {
                 name="metodoPagamento"
                 rules={[{ required: true, message: 'Por favor, selecione o método de pagamento' }]}
               >
-                <Select placeholder="Selecione o método de pagamento" size="large">
-                  <Option value="dinheiro">Dinheiro</Option>
-                  <Option value="mpesa">M-Pesa</Option>
-                  <Option value="emola">E-mola</Option>
-                  <Option value="cartao">Cartão de Crédito/Débito</Option>
-                  <Option value="transferencia">Transferência Bancária</Option>
-                  <Option value="cheque">Cheque</Option>
+                <Select placeholder="Selecione o método de pagamento" size="large" loading={loadingPagamentoConfig}>
+                  {metodosPagamento.map(metodo => (
+                    <Option key={metodo.id} value={metodo.codigo || metodo.id}>
+                      {metodo.nome}
+                    </Option>
+                  ))}
+                  {metodosPagamento.length === 0 && (
+                    <Option disabled>Nenhum método de pagamento disponível</Option>
+                  )}
                 </Select>
               </Form.Item>
 
@@ -8303,13 +7845,15 @@ const CadastroPaciente = () => {
                 name="metodoPagamento"
                 rules={[{ required: true, message: 'Por favor, selecione o método de pagamento' }]}
               >
-                <Select placeholder="Selecione o método de pagamento" size="large">
-                  <Option value="dinheiro">Dinheiro</Option>
-                  <Option value="mpesa">M-Pesa</Option>
-                  <Option value="emola">E-mola</Option>
-                  <Option value="cartao">Cartão de Crédito/Débito</Option>
-                  <Option value="transferencia">Transferência Bancária</Option>
-                  <Option value="cheque">Cheque</Option>
+                <Select placeholder="Selecione o método de pagamento" size="large" loading={loadingPagamentoConfig}>
+                  {metodosPagamento.map(metodo => (
+                    <Option key={metodo.id} value={metodo.codigo || metodo.id}>
+                      {metodo.nome}
+                    </Option>
+                  ))}
+                  {metodosPagamento.length === 0 && (
+                    <Option disabled>Nenhum método de pagamento disponível</Option>
+                  )}
                 </Select>
               </Form.Item>
 
@@ -8830,87 +8374,8 @@ const CadastroPaciente = () => {
             )}
           </Modal>
 
-          {/* Modal de Consulta de Acompanhamento */}
-          <Modal
-            title="📋 Consulta de Acompanhamento"
-            visible={isAcompanhamentoModalVisible}
-            onCancel={() => setIsAcompanhamentoModalVisible(false)}
-            footer={null}
-            width={600}
-          >
-            <Form
-              form={acompanhamentoForm}
-              layout="vertical"
-              onFinish={processarConsultaAcompanhamento}
-            >
-              <div style={{ 
-                backgroundColor: '#f0f9ff', 
-                padding: '12px', 
-                borderRadius: '6px', 
-                marginBottom: '16px',
-                border: '1px solid #bfdbfe'
-              }}>
-                <Text strong style={{ color: '#1e40af' }}>
-                  Paciente: {pacienteAcompanhamento?.nome} {pacienteAcompanhamento?.apelido}
-                </Text>
-                <br />
-                <Text style={{ fontSize: '12px', color: '#6b7280' }}>
-                  Consulta de acompanhamento gratuita válida por 7 dias após alta com prescrição
-                </Text>
-              </div>
-
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item 
-                    name="medico" 
-                    label="Médico" 
-                    rules={[{ required: true, message: 'Selecione o médico' }]}
-                  >
-                    <Select placeholder="Selecione o médico">
-                      <Option value="Dr. António Silva">Dr. António Silva</Option>
-                      <Option value="Dra. Maria Santos">Dra. Maria Santos</Option>
-                      <Option value="Dr. Carlos Mandlate">Dr. Carlos Mandlate</Option>
-                      <Option value="Dra. Ana Machel">Dra. Ana Machel</Option>
-                      <Option value="Dr. Pedro Chissano">Dr. Pedro Chissano</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item 
-                    name="tipoAcompanhamento" 
-                    label="Tipo de Acompanhamento" 
-                    rules={[{ required: true, message: 'Selecione o tipo de acompanhamento' }]}
-                  >
-                    <Select placeholder="Selecione o tipo">
-                      <Option value="Consulta de Rotina">Consulta de Rotina</Option>
-                      <Option value="Verificação de Medicamento">Verificação de Medicamento</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item name="observacoes" label="Observações (Opcional)">
-                <TextArea 
-                  rows={3} 
-                  placeholder="Observações sobre a consulta de acompanhamento..."
-                />
-              </Form.Item>
-
-              <Form.Item>
-                <Space>
-                  <Button type="primary" htmlType="submit">
-                    Agendar Consulta de Acompanhamento
-                  </Button>
-                  <Button onClick={() => setIsAcompanhamentoModalVisible(false)}>
-                    Cancelar
-                  </Button>
-                </Space>
-              </Form.Item>
-            </Form>
-          </Modal>
-
           {/* Estilos personalizados */}
-          <style>{`
+          {/* <style>{`
     .ant-table-thead > tr > th {
       background: #e8eefc !important;
       color: #2d3a4a !important;
@@ -8933,7 +8398,42 @@ const CadastroPaciente = () => {
     .ant-modal-content {
       border-radius: 10px !important;
     }
-  `}</style>
+  `}</style> */}
+  <style>{`
+  .ant-table-thead > tr > th {
+    background: #e8eefc !important;
+    color: #2d3a4a !important;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 8px 12px !important;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 6px 12px !important;
+    font-size: 13px;
+  }
+
+  .ant-table-row-light {
+    background: #ffffff;
+  }
+
+  .ant-table-row-dark {
+    background: #f6f8fa;
+  }
+
+  .ant-table-tbody > tr:hover > td {
+    background: #e0f2fe !important;
+  }
+
+  .ant-btn-primary {
+    background: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+  }
+
+  .ant-modal-content {
+    border-radius: 10px !important;
+  }
+`}</style>
         </Card>
         
       </div>

@@ -2,171 +2,36 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Typography, Tabs, Table, Button, Tag, Select, Modal, Form, Input, InputNumber, Radio, message } from 'antd';
 import { UserOutlined, FileTextOutlined, FileOutlined, MedicineBoxOutlined, AppstoreAddOutlined, PlusOutlined, SearchOutlined, BankOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import api from '../../services/api';
 
 const { Title } = Typography;
-
-// Dados mock para especialidades
-const especialidadesMock = [
-  { id: 1, nome: 'Cardiologia', descricao: 'Doenças do coração' },
-  { id: 2, nome: 'Pediatria', descricao: 'Saúde infantil' },
-];
-
-// Dados mock para tratamentos
-const tratamentosMock = [
-  { id: 1, nome: 'Consulta', descricao: 'Consulta médica geral' },
-  { id: 2, nome: 'Vacinação', descricao: 'Aplicação de vacinas' },
-];
-
-// Dados mock para tipos de utente
-const tiposUtenteMock = [
-  { id: 1, nome: 'Estudante', descricao: 'Aluno da instituição' },
-  { id: 2, nome: 'Funcionário', descricao: 'Funcionário da instituição' },
-  { id: 3, nome: 'Docente', descricao: 'Professor da instituição' },
-];
-
-// Dados mock para tipos de consulta
-const tiposConsultaMock = [
-  { id: 1, nome: 'Primeira Consulta', descricao: 'Primeira vez do paciente' },
-  { id: 2, nome: 'Reconsulta', descricao: 'Retorno do paciente' },
-];
-
-// Dados mock para tipos de exame
-const tiposExameMock = [
-  { id: 1, nome: 'Raio-X', descricao: 'Exame de imagem' },
-  { id: 2, nome: 'Hemograma', descricao: 'Exame de sangue' },
-];
-
-// Dados mock para exames
-const examesMock = [
-  { id: 1, tipoExame: 1, tipoUtente: 1, valor: 1200, estado: 'Ativo' },
-  { id: 2, tipoExame: 2, tipoUtente: 2, valor: 600, estado: 'Inativo' },
-];
-
-// Dados mock para consultas
-const consultasMock = [
-  { id: 1, tipoConsulta: 1, tipoUtente: 1, valor: 800, estado: 'Ativo' },
-  { id: 2, tipoConsulta: 2, tipoUtente: 2, valor: 400, estado: 'Inativo' },
-];
-
-// Dados mock para províncias
-const provinciasMock = [
-  { id: 1, nome: 'Maputo', descricao: 'Capital de Moçambique' },
-  { id: 2, nome: 'Nampula', descricao: 'Província do norte de Moçambique' },
-  { id: 3, nome: 'Sofala', descricao: 'Província central de Moçambique' },
-];
-
-// Dados mock para bairros
-const bairrosMock = [
-  { id: 1, nome: 'Alto Maé', provincia: 1, descricao: 'Bairro em Maputo' },
-  { id: 2, nome: 'Sommerschield', provincia: 1, descricao: 'Bairro nobre de Maputo' },
-  { id: 3, nome: 'Nacala', provincia: 2, descricao: 'Bairro em Nampula' },
-  { id: 4, nome: 'Beira Central', provincia: 3, descricao: 'Bairro na Beira, Sofala' },
-];
-
-// Dados mock para distritos
-const distritosMock = [
-  { id: 1, nome: 'KaMpfumu', codigo: 'KMP', provincia_id: 1, ativo: true },
-  { id: 2, nome: 'KaMaxakeni', codigo: 'KMX', provincia_id: 1, ativo: true },
-];
-
-// Dados mock para unidades orgânicas
-const unidadesOrganicasMock = [
-  { id: 1, nome: 'Departamento de Pediatria', descricao: 'Unidade responsável pelos cuidados infantis' },
-  { id: 2, nome: 'Departamento de Cardiologia', descricao: 'Unidade especializada em doenças cardíacas' },
-];
-
-// Dados mock para serviços
-const servicosMock = [
-  { id: 1, especialidade: 1, tratamento: 1, tipoUtente: 1, valor: 1000, estado: 'Ativo' },
-  { id: 2, especialidade: 2, tratamento: 2, tipoUtente: 2, valor: 500, estado: 'Inativo' },
-];
-
-// Dados mock para raças
-const racasMock = [
-  { id: 1, nome: 'Negra', codigo: 'NEG', descricao: 'Raça negra', ativo: true },
-  { id: 2, nome: 'Branca', codigo: 'BRA', descricao: 'Raça branca', ativo: true },
-];
-
-// Dados mock para medicamentos
-const medicamentosMock = [
-  { id: 1, nome: 'Paracetamol', principio_ativo: 'Paracetamol', codigo: 'MED001', forma_id: 1, via_administracao_id: 1, dosagem: '500', unidade_dosagem: 'mg', generico: true, controlado: false, ativo: true },
-  { id: 2, nome: 'Ibuprofeno', principio_ativo: 'Ibuprofeno', codigo: 'MED002', forma_id: 1, via_administracao_id: 1, dosagem: '400', unidade_dosagem: 'mg', generico: true, controlado: false, ativo: true },
-];
-
-// Dados mock para formas de medicamento
-const formasMedicamentoMock = [
-  { id: 1, nome: 'Comprimido', codigo: 'COMP', descricao: 'Medicamento em forma de comprimido', ativo: true },
-  { id: 2, nome: 'Cápsula', codigo: 'CAPS', descricao: 'Medicamento em forma de cápsula', ativo: true },
-];
-
-// Dados mock para vias de administração
-const viasAdministracaoMock = [
-  { id: 1, nome: 'Oral', codigo: 'OR', descricao: 'Via de administração oral', ativo: true },
-  { id: 2, nome: 'Intravenosa', codigo: 'IV', descricao: 'Via de administração intravenosa', ativo: true },
-];
-
-// Dados mock para tipos de documento
-const tiposDocumentoMock = [
-  { id: 1, nome: 'Bilhete de Identidade', codigo: 'BI', descricao: 'Bilhete de Identidade Nacional', formato_validacao: '/^[0-9]{12}[A-Z]$/', ativo: true },
-  { id: 2, nome: 'Passaporte', codigo: 'PASS', descricao: 'Passaporte', formato_validacao: '/^[A-Z]{2}[0-9]{7}$/', ativo: true },
-];
-
-// Dados mock para graus de parentesco
-const grausParentescoMock = [
-  { id: 1, nome: 'Pai', codigo: 'PAI', descricao: 'Pai/Genitor', ativo: true },
-  { id: 2, nome: 'Mãe', codigo: 'MAE', descricao: 'Mãe/Genitora', ativo: true },
-];
-
-// Dados mock para métodos de pagamento
-const metodosPagamentoMock = [
-  { id: 1, nome: 'Dinheiro', codigo: 'CASH', descricao: 'Pagamento em dinheiro', requer_comprovante: false, requer_confirmacao: false, ativo: true },
-  { id: 2, nome: 'Cartão de Crédito/Débito', codigo: 'CARD', descricao: 'Pagamento com cartão', requer_comprovante: true, requer_confirmacao: false, ativo: true },
-];
-
-// Dados mock para funções de especialidade
-const funcoesEspecialidadeMock = [
-  { id: 1, nome: 'Médico', codigo: 'MED', descricao: 'Médico', pode_prescrever: true, pode_solicitar_exames: true, pode_criar_prontuario: true, ativo: true },
-  { id: 2, nome: 'Enfermeiro', codigo: 'ENF', descricao: 'Enfermeiro', pode_prescrever: false, pode_solicitar_exames: false, pode_criar_prontuario: false, ativo: true },
-];
-
-// Dados mock para usuários
-const usuariosMock = [
-  { id: 1, nome: 'Dr. João Silva', email: 'joao.silva@clinica.com', cargo: 'Médico Cardiologista', ativo: true, perfis: [] },
-  { id: 2, nome: 'Enf. Maria Santos', email: 'maria.santos@clinica.com', cargo: 'Enfermeira', ativo: true, perfis: [] },
-];
-
-// Dados mock para perfis
-const perfisMock = [
-  { id: 1, nome: 'Administrador', codigo: 'admin', descricao: 'Administrador do sistema com acesso total', ativo: true, permissoes: [] },
-  { id: 2, nome: 'Médico', codigo: 'medico', descricao: 'Perfil para médicos', ativo: true, permissoes: [] },
-];
 
 const Parametrizacao = () => {
   const [view, setView] = useState('cards');
   const [especialidades, setEspecialidades] = useState([]);
-  const [tratamentos, setTratamentos] = useState(tratamentosMock);
+  const [tratamentos, setTratamentos] = useState([]);
   const [servicos, setServicos] = useState([]);
-  const [tiposUtente, setTiposUtente] = useState(tiposUtenteMock);
-  const [tiposConsulta, setTiposConsulta] = useState(tiposConsultaMock);
-  const [consultas, setConsultas] = useState(consultasMock);
-  const [precosConsultas, setPrecosConsultas] = useState(consultasMock);
-  const [tiposExame, setTiposExame] = useState(tiposExameMock);
-  const [exames, setExames] = useState(examesMock);
-  const [provincias, setProvincias] = useState(provinciasMock);
-  const [bairros, setBairros] = useState(bairrosMock);
-  const [distritos, setDistritos] = useState(distritosMock);
-  const [unidadesOrganicas, setUnidadesOrganicas] = useState(unidadesOrganicasMock);
-  const [racas, setRacas] = useState(racasMock);
-  const [medicamentos, setMedicamentos] = useState(medicamentosMock);
+  const [tiposUtente, setTiposUtente] = useState([]);
+  const [tiposConsulta, setTiposConsulta] = useState([]);
+  const [consultas, setConsultas] = useState([]);
+  const [precosConsultas, setPrecosConsultas] = useState([]);
+  const [tiposExame, setTiposExame] = useState([]);
+  const [exames, setExames] = useState([]);
+  const [provincias, setProvincias] = useState([]);
+  const [bairros, setBairros] = useState([]);
+  const [distritos, setDistritos] = useState([]);
+  const [unidadesOrganicas, setUnidadesOrganicas] = useState([]);
+  const [tiposUnidadesOrganicas, setTiposUnidadesOrganicas] = useState([]);
+  const [racas, setRacas] = useState([]);
+  const [medicamentos, setMedicamentos] = useState([]);
   const [formasFarmaceuticas, setFormasFarmaceuticas] = useState([]);
   const [viasAdministracao, setViasAdministracao] = useState([]);
-  const [tiposDocumento, setTiposDocumento] = useState(tiposDocumentoMock);
-  const [grausParentesco, setGrausParentesco] = useState(grausParentescoMock);
-  const [metodosPagamento, setMetodosPagamento] = useState(metodosPagamentoMock);
-  const [funcoesEspecialidade, setFuncoesEspecialidade] = useState(funcoesEspecialidadeMock);
-  const [usuarios, setUsuarios] = useState(usuariosMock);
-  const [perfis, setPerfis] = useState(perfisMock);
+  const [tiposDocumento, setTiposDocumento] = useState([]);
+  const [grausParentesco, setGrausParentesco] = useState([]);
+  const [metodosPagamento, setMetodosPagamento] = useState([]);
+  const [funcoesEspecialidade, setFuncoesEspecialidade] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [perfis, setPerfis] = useState([]);
   const [activeTab, setActiveTab] = useState('1');
   const [searchText, setSearchText] = useState('');
   const [loadingEspecialidades, setLoadingEspecialidades] = useState(false);
@@ -175,6 +40,7 @@ const Parametrizacao = () => {
   const [loadingProvincias, setLoadingProvincias] = useState(false);
   const [loadingBairros, setLoadingBairros] = useState(false);
   const [loadingUnidadesOrganicas, setLoadingUnidadesOrganicas] = useState(false);
+  const [loadingTiposUnidadesOrganicas, setLoadingTiposUnidadesOrganicas] = useState(false);
   const [loadingRacas, setLoadingRacas] = useState(false);
   const [loadingMedicamentos, setLoadingMedicamentos] = useState(false);
   const [loadingFormasMedicamento, setLoadingFormasMedicamento] = useState(false);
@@ -187,7 +53,7 @@ const Parametrizacao = () => {
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [loadingPerfis, setLoadingPerfis] = useState(false);
   const [loadingPrecosConsultas, setLoadingPrecosConsultas] = useState(false);
-  const [loadingTiposExame, setLoadingTiposExame] = useState(false);
+  const [, setLoadingTiposExame] = useState(false);
   const [loadingExames, setLoadingExames] = useState(false);
 
   // Buscar especialidades da API ao montar o componente
@@ -200,6 +66,7 @@ const Parametrizacao = () => {
       fetchProvincias(),
       fetchBairros(),
       fetchUnidadesOrganicas(),
+      fetchTiposUnidadesOrganicas(),
       fetchRacas(),
       fetchMedicamentos(),
       fetchFormasFarmaceuticas(),
@@ -226,7 +93,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/especialidades/', {
+      const response = await api.get(`/api/especialidades/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -241,7 +108,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar especialidades:', error);
       message.error('Erro ao carregar especialidades');
-      setEspecialidades(especialidadesMock); // Fallback para dados mock
+      setEspecialidades([]);
     } finally {
       setLoadingEspecialidades(false);
     }
@@ -253,7 +120,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/tipos-utente/', {
+      const response = await api.get(`/api/tipos-utente/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -268,7 +135,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar tipos de utente:', error);
       message.error('Erro ao carregar tipos de utente');
-      setTiposUtente(tiposUtenteMock); // Fallback para dados mock
+      setTiposUtente([]);
     } finally {
       setLoadingTiposUtente(false);
     }
@@ -278,7 +145,7 @@ const Parametrizacao = () => {
   const fetchServicos = async () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      const response = await axios.get('http://196.3.100.216/api/precos-especialidades/', {
+      const response = await api.get(`/api/precos-especialidades/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json'
@@ -315,7 +182,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/distritos/', {
+      const response = await api.get(`/api/distritos/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -330,7 +197,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar distritos:', error);
       message.error('Erro ao carregar distritos');
-      setDistritos(distritosMock); // Fallback para dados mock
+      setDistritos([]);
     } finally {
       setLoadingDistritos(false);
     }
@@ -342,7 +209,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/provincias/', {
+      const response = await api.get(`/api/provincias/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -357,7 +224,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar províncias:', error);
       message.error('Erro ao carregar províncias');
-      setProvincias(provinciasMock); // Fallback para dados mock
+      setProvincias([]);
     } finally {
       setLoadingProvincias(false);
     }
@@ -369,7 +236,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/bairros/', {
+      const response = await api.get(`/api/bairros/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -384,7 +251,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar bairros:', error);
       message.error('Erro ao carregar bairros');
-      setBairros(bairrosMock); // Fallback para dados mock
+      setBairros([]);
     } finally {
       setLoadingBairros(false);
     }
@@ -396,7 +263,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/unidades-organicas/', {
+      const response = await api.get(`/api/unidades-organicas/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -411,9 +278,34 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar unidades orgânicas:', error);
       message.error('Erro ao carregar unidades orgânicas');
-      setUnidadesOrganicas(unidadesOrganicasMock); // Fallback para dados mock
+      setUnidadesOrganicas([]);
     } finally {
       setLoadingUnidadesOrganicas(false);
+    }
+  };
+
+  const fetchTiposUnidadesOrganicas = async () => {
+    setLoadingTiposUnidadesOrganicas(true);
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+      const response = await api.get(`/api/unidades-organicas/tipos`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const tiposData = response?.data?.data || response?.data || [];
+      setTiposUnidadesOrganicas(tiposData);
+      console.log('✅ Tipos de Unidades Orgânicas carregados:', tiposData);
+    } catch (error) {
+      console.error('❌ Erro ao buscar tipos de unidades orgânicas:', error);
+      message.error('Erro ao carregar tipos de unidades orgânicas');
+      setTiposUnidadesOrganicas([]);
+    } finally {
+      setLoadingTiposUnidadesOrganicas(false);
     }
   };
 
@@ -423,7 +315,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/racas/', {
+      const response = await api.get(`/api/racas/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -438,7 +330,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar raças:', error);
       message.error('Erro ao carregar raças');
-      setRacas(racasMock); // Fallback para dados mock
+      setRacas([]);
     } finally {
       setLoadingRacas(false);
     }
@@ -450,7 +342,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/medicamentos/', {
+      const response = await api.get(`/api/medicamentos/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -465,7 +357,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar medicamentos:', error);
       message.error('Erro ao carregar medicamentos');
-      setMedicamentos(medicamentosMock); // Fallback para dados mock
+      setMedicamentos([]);
     } finally {
       setLoadingMedicamentos(false);
     }
@@ -477,7 +369,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/formas-medicamento/', {
+      const response = await api.get(`/api/formas-medicamento/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -491,7 +383,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar formas farmacêuticas:', error);
       message.error('Erro ao carregar formas de medicamento');
-      setFormasFarmaceuticas(formasMedicamentoMock);
+      setFormasFarmaceuticas([]);
     } finally {
       setLoadingFormasMedicamento(false);
     }
@@ -503,7 +395,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/vias-administracao/', {
+      const response = await api.get(`/api/vias-administracao/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -517,7 +409,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar vias de administração:', error);
       message.error('Erro ao carregar vias de administração');
-      setViasAdministracao(viasAdministracaoMock);
+      setViasAdministracao([]);
     } finally {
       setLoadingViasAdministracao(false);
     }
@@ -529,7 +421,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/tipos-documento/', {
+      const response = await api.get(`/api/tipos-documento/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -543,7 +435,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar tipos de documento:', error);
       message.error('Erro ao carregar tipos de documento');
-      setTiposDocumento(tiposDocumentoMock);
+      setTiposDocumento([]);
     } finally {
       setLoadingTiposDocumento(false);
     }
@@ -555,7 +447,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/graus-parentesco/', {
+      const response = await api.get(`/api/graus-parentesco/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -569,7 +461,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar graus de parentesco:', error);
       message.error('Erro ao carregar graus de parentesco');
-      setGrausParentesco(grausParentescoMock);
+      setGrausParentesco([]);
     } finally {
       setLoadingGrausParentesco(false);
     }
@@ -581,7 +473,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/metodos-pagamento/', {
+      const response = await api.get(`/api/metodos-pagamento/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -595,7 +487,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar métodos de pagamento:', error);
       message.error('Erro ao carregar métodos de pagamento');
-      setMetodosPagamento(metodosPagamentoMock);
+      setMetodosPagamento([]);
     } finally {
       setLoadingMetodosPagamento(false);
     }
@@ -607,7 +499,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/tipos-consulta/', {
+      const response = await api.get(`/api/tipos-consulta/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -621,7 +513,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar tipos de consulta:', error);
       message.error('Erro ao carregar tipos de consulta');
-      setTiposConsulta(tiposConsultaMock);
+      setTiposConsulta([]);
     } finally {
       setLoadingTiposConsulta(false);
     }
@@ -633,7 +525,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/tipos-exame/', {
+      const response = await api.get(`/api/tipos-exame/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -647,7 +539,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar tipos de exame:', error);
       message.error('Erro ao carregar tipos de exame');
-      setTiposExame(tiposExameMock);
+      setTiposExame([]);
     } finally {
       setLoadingTiposExame(false);
     }
@@ -659,7 +551,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/exames/', {
+      const response = await api.get(`/api/exames/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -673,7 +565,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar exames:', error);
       message.error('Erro ao carregar exames');
-      setExames(examesMock);
+      setExames([]);
     } finally {
       setLoadingExames(false);
     }
@@ -685,7 +577,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/funcoes-especialidade/', {
+      const response = await api.get(`/api/funcoes-especialidade/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -699,7 +591,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar funções de especialidade:', error);
       message.error('Erro ao carregar funções de especialidade');
-      setFuncoesEspecialidade(funcoesEspecialidadeMock);
+      setFuncoesEspecialidade([]);
     } finally {
       setLoadingFuncoesEspecialidade(false);
     }
@@ -711,7 +603,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/users/', {
+      const response = await api.get(`/api/users/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -725,7 +617,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar usuários:', error);
       message.error('Erro ao carregar usuários');
-      setUsuarios(usuariosMock);
+      setUsuarios([]);
     } finally {
       setLoadingUsuarios(false);
     }
@@ -737,7 +629,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/roles/', {
+      const response = await api.get(`/api/roles/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -751,7 +643,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar perfis:', error);
       message.error('Erro ao carregar perfis');
-      setPerfis(perfisMock);
+      setPerfis([]);
     } finally {
       setLoadingPerfis(false);
     }
@@ -763,7 +655,7 @@ const Parametrizacao = () => {
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       
-      const response = await axios.get('http://196.3.100.216/api/precos-consultas/', {
+      const response = await api.get(`/api/precos-consultas/`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -777,7 +669,7 @@ const Parametrizacao = () => {
     } catch (error) {
       console.error('❌ Erro ao buscar preços de consultas:', error);
       message.error('Erro ao carregar preços de consultas');
-      setPrecosConsultas(consultasMock);
+      setPrecosConsultas([]);
     } finally {
       setLoadingPrecosConsultas(false);
     }
@@ -1140,6 +1032,13 @@ const Parametrizacao = () => {
     }
   ];
   
+  const getTipoUnidadeOrganicaLabel = (tipoNome) => {
+    const tipo = tiposUnidadesOrganicas.find(item =>
+      item.nome?.toLowerCase() === String(tipoNome || '').toLowerCase()
+    );
+    return tipo?.nome || (tipoNome ? tipoNome.charAt(0).toUpperCase() + tipoNome.slice(1) : '-');
+  };
+
   // Tabela de Unidades Orgânicas
   const unidadesOrganicasColumns = [
     {
@@ -1156,7 +1055,7 @@ const Parametrizacao = () => {
       title: 'Tipo',
       dataIndex: 'tipo',
       key: 'tipo',
-      render: (tipo) => tipo ? tipo.charAt(0).toUpperCase() + tipo.slice(1) : '-'
+      render: (tipo) => getTipoUnidadeOrganicaLabel(tipo)
     },
     {
       title: 'Descrição',
@@ -1176,6 +1075,35 @@ const Parametrizacao = () => {
       key: 'acao',
       render: (_, record) => (
         <Button size="small" onClick={() => handleEdit('unidadeOrganica', record)}>Editar</Button>
+      )
+    }
+  ];
+
+  const tiposUnidadesOrganicasColumns = [
+    {
+      title: 'Nome do Tipo',
+      dataIndex: 'nome',
+      key: 'nome',
+    },
+    {
+      title: 'Descrição',
+      dataIndex: 'descricao',
+      key: 'descricao',
+      render: (descricao) => descricao || '-'
+    },
+    {
+      title: 'Estado',
+      dataIndex: 'ativo',
+      key: 'ativo',
+      render: (ativo) => (
+        <Tag color={ativo ? 'green' : 'red'}>{ativo ? 'Ativo' : 'Inativo'}</Tag>
+      )
+    },
+    {
+      title: 'Ação',
+      key: 'acao',
+      render: (_, record) => (
+        <Button size="small" onClick={() => handleEdit('tipoUnidadeOrganica', record)}>Editar</Button>
       )
     }
   ];
@@ -1637,6 +1565,8 @@ const Parametrizacao = () => {
       form.setFieldsValue({ nome: record.nome, descricao: record.descricao });
     } else if (type === 'unidadeOrganica') {
       form.setFieldsValue({ nome: record.nome, sigla: record.sigla, descricao: record.descricao, tipo: record.tipo, ativo: record.ativo });
+    } else if (type === 'tipoUnidadeOrganica') {
+      form.setFieldsValue({ nome: record.nome, descricao: record.descricao, ativo: record.ativo });
     } else if (type === 'provincia') {
       form.setFieldsValue({ nome: record.nome, codigo: record.codigo, ativo: record.ativo });
     } else if (type === 'bairro') {
@@ -1716,7 +1646,7 @@ const Parametrizacao = () => {
       form.resetFields();
       
       // Definir valores padrão para novo usuário, perfil ou preço de consulta
-      if (type === 'usuario' || type === 'perfil' || type === 'precoConsulta') {
+      if (type === 'usuario' || type === 'perfil' || type === 'precoConsulta' || type === 'unidadeOrganica' || type === 'tipoUnidadeOrganica') {
         form.setFieldsValue({ ativo: true });
       }
     }
@@ -1735,7 +1665,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar especialidade existente
-            await axios.put(`http://196.3.100.216/api/especialidades/${editRecord.id}`, values, {
+            await api.put(`/api/especialidades/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1745,7 +1675,7 @@ const Parametrizacao = () => {
             message.success('Especialidade atualizada com sucesso!');
           } else {
             // Criar nova especialidade
-            await axios.post('http://196.3.100.216/api/especialidades/', values, {
+            await api.post(`/api/especialidades/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1773,7 +1703,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar serviço existente
-            await axios.put(`http://196.3.100.216/api/precos-especialidades/${editRecord.id}`, payload, {
+            await api.put(`/api/precos-especialidades/${editRecord.id}`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1783,7 +1713,7 @@ const Parametrizacao = () => {
             message.success('Serviço atualizado com sucesso!');
           } else {
             // Criar novo serviço
-            await axios.post('http://196.3.100.216/api/precos-especialidades/', payload, {
+            await api.post(`/api/precos-especialidades/`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1806,7 +1736,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de utente existente
-            await axios.put(`http://196.3.100.216/api/tipos-utente/${editRecord.id}`, values, {
+            await api.put(`/api/tipos-utente/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1816,7 +1746,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Utente atualizado com sucesso!');
           } else {
             // Criar novo tipo de utente
-            await axios.post('http://196.3.100.216/api/tipos-utente/', values, {
+            await api.post(`/api/tipos-utente/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1856,7 +1786,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de exame existente
-            await axios.put(`http://196.3.100.216/api/tipos-exame/${editRecord.id}`, payload, {
+            await api.put(`/api/tipos-exame/${editRecord.id}`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1866,7 +1796,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Exame atualizado com sucesso!');
           } else {
             // Criar novo tipo de exame
-            await axios.post('http://196.3.100.216/api/tipos-exame/', payload, {
+            await api.post(`/api/tipos-exame/`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1894,7 +1824,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar exame existente
-            await axios.put(`http://196.3.100.216/api/exames/${editRecord.id}`, payload, {
+            await api.put(`/api/exames/${editRecord.id}`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1904,7 +1834,7 @@ const Parametrizacao = () => {
             message.success('Exame atualizado com sucesso!');
           } else {
             // Criar novo exame
-            await axios.post('http://196.3.100.216/api/exames/', payload, {
+            await api.post(`/api/exames/`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1921,7 +1851,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar província existente
-            await axios.put(`http://196.3.100.216/api/provincias/${editRecord.id}`, values, {
+            await api.put(`/api/provincias/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1931,7 +1861,7 @@ const Parametrizacao = () => {
             message.success('Província atualizada com sucesso!');
           } else {
             // Criar nova província
-            await axios.post('http://196.3.100.216/api/provincias/', values, {
+            await api.post(`/api/provincias/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1948,7 +1878,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar bairro existente
-            await axios.put(`http://196.3.100.216/api/bairros/${editRecord.id}`, values, {
+            await api.put(`/api/bairros/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1958,7 +1888,7 @@ const Parametrizacao = () => {
             message.success('Bairro atualizado com sucesso!');
           } else {
             // Criar novo bairro
-            await axios.post('http://196.3.100.216/api/bairros/', values, {
+            await api.post(`/api/bairros/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1975,7 +1905,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar distrito existente
-            await axios.put(`http://196.3.100.216/api/distritos/${editRecord.id}`, values, {
+            await api.put(`/api/distritos/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1985,7 +1915,7 @@ const Parametrizacao = () => {
             message.success('Distrito atualizado com sucesso!');
           } else {
             // Criar novo distrito
-            await axios.post('http://196.3.100.216/api/distritos/', values, {
+            await api.post(`/api/distritos/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -1997,12 +1927,36 @@ const Parametrizacao = () => {
           
           // Recarregar lista de distritos
           await fetchDistritos();
+        } else if (editType === 'tipoUnidadeOrganica') {
+          const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+          
+          if (editRecord) {
+            await api.put(`/api/unidades-organicas/tipos/${editRecord.id}`, values, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Tipo de Unidade Orgânica atualizado com sucesso!');
+          } else {
+            await api.post(`/api/unidades-organicas/tipos`, values, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            message.success('Tipo de Unidade Orgânica criado com sucesso!');
+          }
+          
+          await fetchTiposUnidadesOrganicas();
         } else if (editType === 'unidadeOrganica') {
           const token = localStorage.getItem('access_token') || localStorage.getItem('token');
           
           if (editRecord) {
             // Atualizar unidade orgânica existente
-            await axios.put(`http://196.3.100.216/api/unidades-organicas/${editRecord.id}`, values, {
+            await api.put(`/api/unidades-organicas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2012,7 +1966,7 @@ const Parametrizacao = () => {
             message.success('Unidade Orgânica atualizada com sucesso!');
           } else {
             // Criar nova unidade orgânica
-            await axios.post('http://196.3.100.216/api/unidades-organicas/', values, {
+            await api.post(`/api/unidades-organicas/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2029,7 +1983,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar raça existente
-            await axios.put(`http://196.3.100.216/api/racas/${editRecord.id}`, values, {
+            await api.put(`/api/racas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2039,7 +1993,7 @@ const Parametrizacao = () => {
             message.success('Raça atualizada com sucesso!');
           } else {
             // Criar nova raça
-            await axios.post('http://196.3.100.216/api/racas/', values, {
+            await api.post(`/api/racas/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2056,7 +2010,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar medicamento existente
-            await axios.put(`http://196.3.100.216/api/medicamentos/${editRecord.id}`, values, {
+            await api.put(`/api/medicamentos/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2066,7 +2020,7 @@ const Parametrizacao = () => {
             message.success('Medicamento atualizado com sucesso!');
           } else {
             // Criar novo medicamento
-            await axios.post('http://196.3.100.216/api/medicamentos/', values, {
+            await api.post(`/api/medicamentos/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2083,7 +2037,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar forma de medicamento existente
-            await axios.put(`http://196.3.100.216/api/formas-medicamento/${editRecord.id}`, values, {
+            await api.put(`/api/formas-medicamento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2093,7 +2047,7 @@ const Parametrizacao = () => {
             message.success('Forma de Medicamento atualizada com sucesso!');
           } else {
             // Criar nova forma de medicamento
-            await axios.post('http://196.3.100.216/api/formas-medicamento/', values, {
+            await api.post(`/api/formas-medicamento/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2110,7 +2064,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar via de administração existente
-            await axios.put(`http://196.3.100.216/api/vias-administracao/${editRecord.id}`, values, {
+            await api.put(`/api/vias-administracao/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2120,7 +2074,7 @@ const Parametrizacao = () => {
             message.success('Via de Administração atualizada com sucesso!');
           } else {
             // Criar nova via de administração
-            await axios.post('http://196.3.100.216/api/vias-administracao/', values, {
+            await api.post(`/api/vias-administracao/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2137,7 +2091,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de documento existente
-            await axios.put(`http://196.3.100.216/api/tipos-documento/${editRecord.id}`, values, {
+            await api.put(`/api/tipos-documento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2147,7 +2101,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Documento atualizado com sucesso!');
           } else {
             // Criar novo tipo de documento
-            await axios.post('http://196.3.100.216/api/tipos-documento/', values, {
+            await api.post(`/api/tipos-documento/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2164,7 +2118,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar grau de parentesco existente
-            await axios.put(`http://196.3.100.216/api/graus-parentesco/${editRecord.id}`, values, {
+            await api.put(`/api/graus-parentesco/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2174,7 +2128,7 @@ const Parametrizacao = () => {
             message.success('Grau de Parentesco atualizado com sucesso!');
           } else {
             // Criar novo grau de parentesco
-            await axios.post('http://196.3.100.216/api/graus-parentesco/', values, {
+            await api.post(`/api/graus-parentesco/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2191,7 +2145,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar método de pagamento existente
-            await axios.put(`http://196.3.100.216/api/metodos-pagamento/${editRecord.id}`, values, {
+            await api.put(`/api/metodos-pagamento/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2201,7 +2155,7 @@ const Parametrizacao = () => {
             message.success('Método de Pagamento atualizado com sucesso!');
           } else {
             // Criar novo método de pagamento
-            await axios.post('http://196.3.100.216/api/metodos-pagamento/', values, {
+            await api.post(`/api/metodos-pagamento/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2218,7 +2172,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar tipo de consulta existente
-            await axios.put(`http://196.3.100.216/api/tipos-consulta/${editRecord.id}`, values, {
+            await api.put(`/api/tipos-consulta/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2228,7 +2182,7 @@ const Parametrizacao = () => {
             message.success('Tipo de Consulta atualizado com sucesso!');
           } else {
             // Criar novo tipo de consulta
-            await axios.post('http://196.3.100.216/api/tipos-consulta/', values, {
+            await api.post(`/api/tipos-consulta/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2245,7 +2199,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar função de especialidade existente
-            await axios.put(`http://196.3.100.216/api/funcoes-especialidade/${editRecord.id}`, values, {
+            await api.put(`/api/funcoes-especialidade/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2255,7 +2209,7 @@ const Parametrizacao = () => {
             message.success('Função de Especialidade atualizada com sucesso!');
           } else {
             // Criar nova função de especialidade
-            await axios.post('http://196.3.100.216/api/funcoes-especialidade/', values, {
+            await api.post(`/api/funcoes-especialidade/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2273,7 +2227,7 @@ const Parametrizacao = () => {
           if (editRecord) {
             // Atualizar usuário existente - remover senha se existir
             const { senha, ...updateValues } = values;
-            await axios.put(`http://196.3.100.216/api/users/${editRecord.id}`, updateValues, {
+            await api.put(`/api/users/${editRecord.id}`, updateValues, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2294,7 +2248,7 @@ const Parametrizacao = () => {
             
             console.log('📦 Payload do usuário:', payload);
             
-            await axios.post('http://196.3.100.216/api/users/', payload, {
+            await api.post(`/api/users/`, payload, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2311,7 +2265,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar perfil existente
-            await axios.put(`http://196.3.100.216/api/roles/${editRecord.id}`, values, {
+            await api.put(`/api/roles/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2321,7 +2275,7 @@ const Parametrizacao = () => {
             message.success('Perfil atualizado com sucesso!');
           } else {
             // Criar novo perfil
-            await axios.post('http://196.3.100.216/api/roles/', values, {
+            await api.post(`/api/roles/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2338,7 +2292,7 @@ const Parametrizacao = () => {
           
           if (editRecord) {
             // Atualizar preço de consulta existente
-            await axios.put(`http://196.3.100.216/api/precos-consultas/${editRecord.id}`, values, {
+            await api.put(`/api/precos-consultas/${editRecord.id}`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2348,7 +2302,7 @@ const Parametrizacao = () => {
             message.success('Preço de Consulta atualizado com sucesso!');
           } else {
             // Criar novo preço de consulta
-            await axios.post('http://196.3.100.216/api/precos-consultas/', values, {
+            await api.post(`/api/precos-consultas/`, values, {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
@@ -2375,78 +2329,78 @@ const Parametrizacao = () => {
   if (view === 'cards') {
     return (
       <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
-        <Title level={3} style={{ color: '#28a745', marginBottom: 32 }}>Parametrização</Title>
+        <Title level={3} style={{ color: '#52c41a', marginBottom: 32 }}>Parametrização</Title>
         <Row gutter={[24, 24]} justify="center">
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('hospital')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }}
               bodyStyle={{ padding: 24 }}>
-              <BankOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Hospital</Title>
+              <BankOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Hospital</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie módulos hospitalares</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('tipoUtente')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <UserOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Utentes</Title>
+              <UserOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Utentes</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie os tipos de utente.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('territorio')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <AppstoreAddOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Território</Title>
+              <AppstoreAddOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Território</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie províncias e bairros.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('unidadeOrganica')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <AppstoreAddOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Unidade Orgânica</Title>
+              <AppstoreAddOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Unidade Orgânica</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie as unidades orgânicas.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('raca')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <UserOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Raças</Title>
+              <UserOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Raças</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie as raças.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('tipoDocumento')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <FileOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Tipos de Documento</Title>
+              <FileOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Tipos de Documento</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie os tipos de documento.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('grauParentesco')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <UserOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Graus de Parentesco</Title>
+              <UserOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Graus de Parentesco</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie os graus de parentesco.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('metodoPagamento')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <FileTextOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Métodos de Pagamento</Title>
+              <FileTextOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Métodos de Pagamento</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie os métodos de pagamento.</div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={12} lg={6}>
             <Card hoverable onClick={() => setView('usuario')}
               style={{ borderRadius: 12, textAlign: 'center', minHeight: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: 24 }}>
-              <UserOutlined style={{ fontSize: 32, color: '#28a745', marginBottom: 16 }} />
-              <Title level={5} style={{ color: '#28a745', marginBottom: 8 }}>Usuários</Title>
+              <UserOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 16 }} />
+              <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Usuários</Title>
               <div style={{ color: '#666', fontSize: 13 }}>Gerencie as funções de especialidade.</div>
             </Card>
           </Col>
@@ -2460,15 +2414,15 @@ const Parametrizacao = () => {
     return (
       <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <Title level={3} style={{ color: '#28a745', margin: 0 }}>Hospital</Title>
+          <Title level={3} style={{ color: '#52c41a', margin: 0 }}>Hospital</Title>
           <Button
             onClick={() => setView('cards')}
             style={{
-              color: '#28a745',
+              color: '#52c41a',
               fontWeight: 'bold',
               borderRadius: '8px',
               padding: '6px 16px',
-              borderColor: '#28a745'
+              borderColor: '#52c41a'
             }}
           >
             Voltar
@@ -3941,70 +3895,128 @@ const Parametrizacao = () => {
               </div>
             </div>
 
-            {/* Conteúdo da Tabela */}
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => handleAdd('unidadeOrganica')}
-              style={{
-                background: '#3b82f6',
-                color: '#fff',
-                fontWeight: 'bold',
-                borderRadius: '8px',
-                padding: '6px 16px',
-                marginBottom: 16
-              }}
-            >
-              Nova Unidade Orgânica
-            </Button>
-            <Table
-              columns={unidadesOrganicasColumns}
-              dataSource={unidadesOrganicas}
-              rowKey="id"
-              loading={loadingUnidadesOrganicas}
-              pagination={{
-                pageSize: 5,
-                showSizeChanger: false,
-                style: { marginTop: 5 },
-              }}
-              bordered
-              style={{ borderRadius: 10, overflow: 'hidden' }}
-              rowClassName={(record, index) => index % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark'}
-            />
+            <Tabs defaultActiveKey="unidades" style={{ marginTop: 8 }}>
+              <Tabs.TabPane tab="Unidades Orgânicas" key="unidades">
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => handleAdd('unidadeOrganica')}
+                  style={{
+                    background: '#3b82f6',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    borderRadius: '8px',
+                    padding: '6px 16px',
+                    marginBottom: 16
+                  }}
+                >
+                  Nova Unidade Orgânica
+                </Button>
+                <Table
+                  columns={unidadesOrganicasColumns}
+                  dataSource={unidadesOrganicas}
+                  rowKey="id"
+                  loading={loadingUnidadesOrganicas}
+                  pagination={{
+                    pageSize: 5,
+                    showSizeChanger: false,
+                    style: { marginTop: 5 },
+                  }}
+                  bordered
+                  style={{ borderRadius: 10, overflow: 'hidden' }}
+                  rowClassName={(record, index) => index % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark'}
+                />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab="Tipos" key="tipos">
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => handleAdd('tipoUnidadeOrganica')}
+                  style={{
+                    background: '#3b82f6',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    borderRadius: '8px',
+                    padding: '6px 16px',
+                    marginBottom: 16
+                  }}
+                >
+                  Novo Tipo de Unidade
+                </Button>
+                <Table
+                  columns={tiposUnidadesOrganicasColumns}
+                  dataSource={tiposUnidadesOrganicas}
+                  rowKey="id"
+                  loading={loadingTiposUnidadesOrganicas}
+                  pagination={{
+                    pageSize: 5,
+                    showSizeChanger: false,
+                    style: { marginTop: 5 },
+                  }}
+                  bordered
+                  style={{ borderRadius: 10, overflow: 'hidden' }}
+                  rowClassName={(record, index) => index % 2 === 0 ? 'ant-table-row-light' : 'ant-table-row-dark'}
+                />
+              </Tabs.TabPane>
+            </Tabs>
 
             <Modal
               open={modalVisible}
-              title={editRecord ? 'Editar Unidade Orgânica' : 'Nova Unidade Orgânica'}
+              title={
+                editType === 'tipoUnidadeOrganica'
+                  ? (editRecord ? 'Editar Tipo de Unidade' : 'Novo Tipo de Unidade')
+                  : (editRecord ? 'Editar Unidade Orgânica' : 'Nova Unidade Orgânica')
+              }
               onCancel={() => setModalVisible(false)}
               onOk={handleModalOk}
               okText="Salvar"
               destroyOnClose
             >
               <Form form={form} layout="vertical">
-                <Form.Item name="nome" label="Nome da Unidade Orgânica" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                  <Input placeholder="Digite o nome da unidade orgânica" />
-                </Form.Item>
-                <Form.Item name="sigla" label="Sigla" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                  <Input placeholder="Digite a sigla" />
-                </Form.Item>
-                <Form.Item name="tipo" label="Tipo" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                  <Select placeholder="Selecione o tipo">
-                    <Select.Option value="faculdade">Faculdade</Select.Option>
-                    <Select.Option value="escola">Escola</Select.Option>
-                    <Select.Option value="departamento">Departamento</Select.Option>
-                    <Select.Option value="centro">Centro</Select.Option>
-                    <Select.Option value="instituto">Instituto</Select.Option>
-                  </Select>
-                </Form.Item>
-                <Form.Item name="descricao" label="Descrição" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                  <Input.TextArea placeholder="Digite a descrição da unidade orgânica" rows={3} />
-                </Form.Item>
-                <Form.Item name="ativo" label="Estado" rules={[{ required: true, message: 'Obrigatório' }]}> 
-                  <Radio.Group>
-                    <Radio value={true}>Ativo</Radio>
-                    <Radio value={false}>Inativo</Radio>
-                  </Radio.Group>
-                </Form.Item>
+                {editType === 'tipoUnidadeOrganica' ? (
+                  <>
+                    <Form.Item name="nome" label="Nome do Tipo" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Input placeholder="Digite o nome do tipo" />
+                    </Form.Item>
+                    <Form.Item name="descricao" label="Descrição"> 
+                      <Input.TextArea placeholder="Digite a descrição do tipo" rows={3} />
+                    </Form.Item>
+                    <Form.Item name="ativo" label="Estado" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Radio.Group>
+                        <Radio value={true}>Ativo</Radio>
+                        <Radio value={false}>Inativo</Radio>
+                      </Radio.Group>
+                    </Form.Item>
+                  </>
+                ) : (
+                  <>
+                    <Form.Item name="nome" label="Nome da Unidade Orgânica" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Input placeholder="Digite o nome da unidade orgânica" />
+                    </Form.Item>
+                    <Form.Item name="sigla" label="Sigla" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Input placeholder="Digite a sigla" />
+                    </Form.Item>
+                    <Form.Item name="tipo" label="Tipo" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Select placeholder="Selecione o tipo" loading={loadingTiposUnidadesOrganicas}>
+                        {tiposUnidadesOrganicas.filter(tipo => tipo.ativo !== false).map(tipo => (
+                          <Select.Option key={tipo.id || tipo.nome} value={tipo.nome}>{tipo.nome}</Select.Option>
+                        ))}
+                        {tiposUnidadesOrganicas.length === 0 && (
+                          <Select.Option disabled>Nenhum tipo de unidade cadastrado</Select.Option>
+                        )}
+                      </Select>
+                    </Form.Item>
+                    <Form.Item name="descricao" label="Descrição" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Input.TextArea placeholder="Digite a descrição da unidade orgânica" rows={3} />
+                    </Form.Item>
+                    <Form.Item name="ativo" label="Estado" rules={[{ required: true, message: 'Obrigatório' }]}> 
+                      <Radio.Group>
+                        <Radio value={true}>Ativo</Radio>
+                        <Radio value={false}>Inativo</Radio>
+                      </Radio.Group>
+                    </Form.Item>
+                  </>
+                )}
               </Form>
             </Modal>
 
@@ -5249,7 +5261,7 @@ const Parametrizacao = () => {
                       </Select>
                     </Form.Item>
                     {!editRecord && (
-                      <Form.Item name="senha" label="Senha" rules={[{ required: true, message: 'Obrigatório', min: 8, message: 'Mínimo 8 caracteres' }]}> 
+                      <Form.Item name="senha" label="Senha" rules={[{ required: true, message: 'Obrigatório' }, { min: 8, message: 'Mínimo 8 caracteres' }]}> 
                         <Input.Password placeholder="Digite a senha (mínimo 8 caracteres)" />
                       </Form.Item>
                     )}

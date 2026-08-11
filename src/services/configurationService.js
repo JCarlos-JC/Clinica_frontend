@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // URL base do serviço de configuração (porta 8004)
-const API_URL = 'http://196.3.100.216/api';
+const API_URL = (process.env.REACT_APP_API_URL || 'http://196.3.100.216/api').replace(/\/$/, '');
 
 /**
  * Serviço para buscar dados de referência externa do Configuration Service (porta 8004)
@@ -15,7 +15,7 @@ class ConfigurationService {
      */
     async getRacas() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -55,15 +55,15 @@ class ConfigurationService {
 
     /**
      * Get all tipos de utentes
-     * GET /api/tipos-utentes
+     * GET /api/pacientes/tipos-utentes
      */
     async getTiposUtentes() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
-            const response = await axios.get(`${API_URL}/tipos-utente/`, {
+            const response = await axios.get(`${API_URL}/pacientes/tipos-utentes`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
@@ -103,7 +103,7 @@ class ConfigurationService {
      */
     async getUnidadesOrganicas() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -147,7 +147,7 @@ class ConfigurationService {
      */
     async getTiposDocumento() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -191,7 +191,7 @@ class ConfigurationService {
      */
     async getProvincias() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -235,7 +235,7 @@ class ConfigurationService {
      */
     async getDistritosByProvincia(provinciaId) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             //implementar a rota correcta dos distritos com relacionamento provincia
@@ -282,7 +282,7 @@ class ConfigurationService {
      */
     async getBairrosByDistrito(distritoId) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -336,7 +336,7 @@ class ConfigurationService {
      */
     async getTiposDocumentos() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             const response = await axios.get(`${API_URL}/tipos-documentos/`, {
                 headers: {
@@ -382,7 +382,7 @@ class ConfigurationService {
      */
     async getGrausParentesco() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -420,7 +420,7 @@ class ConfigurationService {
      */
     async getAllConfigurations() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             

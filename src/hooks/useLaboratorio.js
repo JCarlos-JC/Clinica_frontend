@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import laboratorioService from '../services/laboratorioService';
+import { normalizeApiList } from '../services/apiConfig';
+import { invalidateCachedRequest, peekCachedRequest, setCachedRequest } from '../services/requestCache';
 
 /**
  * Hook para gerir o fluxo completo do laboratory-service (:8003).
@@ -14,8 +16,8 @@ import laboratorioService from '../services/laboratorioService';
  *  5. cancelarColheita(id, payload)       → cancela agendamento
  */
 const useLaboratorio = () => {
-  const [agendamentos, setAgendamentos]           = useState([]);
-  const [agendamentosHistorico, setAgendamentosHistorico] = useState([]);
+  const [agendamentos, setAgendamentos]           = useState(() => peekCachedRequest('laboratorio:agendamentos:last', null, { persist: true, allowStale: true }) || []);
+  const [agendamentosHistorico, setAgendamentosHistorico] = useState(() => peekCachedRequest('laboratorio:historico:last', null, { persist: true, allowStale: true }) || []);
   const [agendamentoAtual, setAgendamentoAtual]   = useState(null);
   const [loading, setLoading]                     = useState(false);
   const [loadingAcao, setLoadingAcao]             = useState(false);
@@ -33,9 +35,9 @@ const useLaboratorio = () => {
     setLoading(true);
     try {
       const data = await laboratorioService.getAgendamentos(params);
-      const lista = data?.data ?? data ?? [];
-      const arr = Array.isArray(lista) ? lista : [];
+      const arr = normalizeApiList(data);
       setAgendamentos(arr);
+      setCachedRequest('laboratorio:agendamentos:last', arr, { persist: true });
       return arr;
       } catch (err) {
         message.error('Erro ao carregar agendamentos do laboratório.');
@@ -53,9 +55,9 @@ const useLaboratorio = () => {
     setLoading(true);
     try {
       const data = await laboratorioService.getAgendamentosPendentes();
-      const lista = data?.data ?? data ?? [];
-      const arr = Array.isArray(lista) ? lista : [];
+      const arr = normalizeApiList(data);
       setAgendamentos(arr);
+      setCachedRequest('laboratorio:agendamentos:last', arr, { persist: true });
       return arr;
       } catch (err) {
         message.error('Erro ao carregar colheitas pendentes.');
@@ -73,9 +75,9 @@ const useLaboratorio = () => {
     setLoading(true);
     try {
       const data = await laboratorioService.getAgendamentos({ status: 'concluida' });
-      const lista = data?.data ?? data ?? [];
-      const arr = Array.isArray(lista) ? lista : [];
+      const arr = normalizeApiList(data);
       setAgendamentosHistorico(arr);
+      setCachedRequest('laboratorio:historico:last', arr, { persist: true });
       return arr;
       } catch (err) {
         message.error('Erro ao carregar histórico de colheitas.');
@@ -120,6 +122,7 @@ const useLaboratorio = () => {
     setLoadingAcao(true);
     try {
       const data = await laboratorioService.iniciarColheita(agendamentoId, payload);
+      invalidateCachedRequest('laboratorio:agendamentos');
       message.success(data?.message || 'Colheita iniciada.');
       setAgendamentos(prev =>
         prev.map(a => a.id === agendamentoId ? { ...a, status: 'em_colheita' } : a)
@@ -153,6 +156,7 @@ const useLaboratorio = () => {
     setLoadingAcao(true);
     try {
       const data = await laboratorioService.concluirColheita(agendamentoId, payload);
+      invalidateCachedRequest('laboratorio:agendamentos');
       message.success(data?.message || 'Colheita concluída. Resultados enviados ao médico.');
       // Move da lista pendentes para histórico
       setAgendamentos(prev => prev.filter(a => a.id !== agendamentoId));
@@ -203,6 +207,7 @@ const useLaboratorio = () => {
     setLoadingAcao(true);
     try {
       const data = await laboratorioService.cancelarColheita(agendamentoId, payload);
+      invalidateCachedRequest('laboratorio:agendamentos');
       message.success(data?.message || 'Agendamento cancelado.');
       setAgendamentos(prev => prev.filter(a => a.id !== agendamentoId));
       onSuccess?.(data);

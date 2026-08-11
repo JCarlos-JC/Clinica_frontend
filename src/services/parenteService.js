@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8002/api';
+const API_URL = (process.env.REACT_APP_API_URL || 'http://196.3.100.216/api').replace(/\/$/, '');
 
 class ParenteService {
     /**
@@ -12,7 +12,7 @@ class ParenteService {
      */
     async getParentesByPacienteNid(pacienteNid) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -105,7 +105,7 @@ class ParenteService {
      */
     async createParente(pacienteNid, parenteData) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -158,7 +158,7 @@ class ParenteService {
      */
     async updateParente(parenteId, parenteData) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -210,7 +210,7 @@ class ParenteService {
      */
     async deleteParente(parenteId) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
@@ -246,7 +246,7 @@ class ParenteService {
      */
     async getParenteById(parenteId) {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             
             // ...existing code...
             
